@@ -4,26 +4,49 @@
   "properties": {
     "name": {
       "type": "string",
-      "title": "Supplier Name"
+      "title": "Rule Name"
+    },
+    "search_type": {
+      "type": "string",
+      "enum": [
+        "sender_email",
+        "company_name",
+        "gmail_search"
+      ],
+      "default": "sender_email",
+      "title": "Search Type"
     },
     "email": {
       "type": "string",
-      "format": "email",
-      "title": "Email Address"
+      "title": "Sender Email"
     },
     "keyword": {
       "type": "string",
-      "title": "Keyword (optional)",
-      "default": ""
+      "title": "Search Value"
     },
     "drive_folder_name": {
       "type": "string",
-      "title": "Drive Folder Name"
+      "title": "Destination Folder"
+    },
+    "last_run": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Last Run"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "new",
+        "active",
+        "error"
+      ],
+      "default": "new",
+      "title": "Status"
     }
   },
   "required": [
     "name",
-    "email",
+    "search_type",
     "drive_folder_name"
   ]
 }

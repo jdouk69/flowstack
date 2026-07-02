@@ -124,8 +124,13 @@ async function processSupplier(supplier, gmailAuth, driveAuth) {
   };
 
   try {
-    const queries = [`from:${supplier.email} has:attachment filename:pdf`];
-    if (supplier.keyword) {
+    const searchType = supplier.search_type || 'sender_email';
+    const queries = [];
+    if (searchType === 'sender_email' && supplier.email) {
+      queries.push(`from:${supplier.email} has:attachment filename:pdf`);
+    } else if (searchType === 'company_name' && supplier.keyword) {
+      queries.push(`from:${supplier.keyword} has:attachment filename:pdf`);
+    } else if (searchType === 'gmail_search' && supplier.keyword) {
       queries.push(`${supplier.keyword} has:attachment filename:pdf`);
     }
 
@@ -224,6 +229,11 @@ Deno.serve(async (req) => {
         drive_folder_link: result.drive_folder_link,
         status: result.errors > 0 ? 'partial' : 'completed',
         error_details: result.error_details.join('; ')
+      });
+
+      await base44.entities.Supplier.update(supplier.id, {
+        last_run: new Date().toISOString(),
+        status: result.errors > 0 ? 'error' : 'active'
       });
     }
 

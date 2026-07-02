@@ -4,8 +4,9 @@ import { queryClientInstance } from '@/lib/query-client'
 import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
 import Layout from '@/components/Layout';
-import Dashboard from '@/pages/Dashboard';
-import Suppliers from '@/pages/Suppliers';
+import Welcome from '@/pages/Welcome';
+import Rules from '@/pages/Rules';
+import CreateRuleWizard from '@/pages/CreateRuleWizard';
 import RunHistory from '@/pages/RunHistory';
 import Settings from '@/pages/Settings';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
@@ -40,8 +41,10 @@ const AuthenticatedApp = () => {
   return (
     <Routes>
       <Route element={<Layout />}>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/suppliers" element={<Suppliers />} />
+        <Route path="/" element={<Welcome />} />
+        <Route path="/rules" element={<Rules />} />
+        <Route path="/rules/new" element={<CreateRuleWizard />} />
+        <Route path="/rules/:id/edit" element={<CreateRuleWizard />} />
         <Route path="/run-history" element={<RunHistory />} />
         <Route path="/settings" element={<Settings />} />
       </Route>
