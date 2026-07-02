@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
-import { Home, FileText, History, Settings as SettingsIcon, LogOut, Menu, X, Sun, Moon } from 'lucide-react';
+import { Home, FileText, History, Settings as SettingsIcon, LogOut, Menu, X } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
+import { useTheme } from '@/hooks/useTheme';
 
 const navItems = [
   { path: '/', label: 'Home', icon: Home },
@@ -14,22 +15,12 @@ const navItems = [
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [user, setUser] = useState(null);
-  const [dark, setDark] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    const stored = localStorage.getItem('theme');
-    if (stored) return stored === 'dark';
-    return window.matchMedia('(prefers-color-scheme: dark)').matches;
-  });
+  const { isDark } = useTheme();
   const location = useLocation();
 
   useEffect(() => {
     base44.auth.me().then(setUser).catch(() => {});
   }, []);
-
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', dark);
-    localStorage.setItem('theme', dark ? 'dark' : 'light');
-  }, [dark]);
 
   useEffect(() => {
     setSidebarOpen(false);
@@ -101,9 +92,6 @@ export default function Layout() {
                 <p className="text-sm font-medium truncate">{user.full_name || 'User'}</p>
                 <p className="text-xs text-muted-foreground truncate">{user.email}</p>
               </div>
-              <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => setDark(!dark)} aria-label="Toggle theme">
-                {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-              </Button>
             </div>
           )}
           <Button variant="ghost" className="w-full justify-start gap-3 text-muted-foreground" onClick={handleLogout}>

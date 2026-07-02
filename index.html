@@ -8,6 +8,13 @@
     <title>Gmail PDF Organizer</title>
   </head>
   <body>
+    <script>
+      (function() {
+        var pref = localStorage.getItem('theme-preference') || 'light';
+        var dark = pref === 'dark' || (pref === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        if (dark) document.documentElement.classList.add('dark');
+      })();
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

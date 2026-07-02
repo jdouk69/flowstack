@@ -2,10 +2,18 @@ import { useState, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Mail, Folder, LogOut, CheckCircle2, Shield } from 'lucide-react';
+import { Mail, Folder, LogOut, CheckCircle2, Shield, Sun, Moon, Monitor } from 'lucide-react';
+import { useTheme } from '@/hooks/useTheme';
+
+const themeOptions = [
+  { value: 'light', label: 'Light', description: 'Bright and clean', icon: Sun },
+  { value: 'dark', label: 'Dark', description: 'Easy on the eyes', icon: Moon },
+  { value: 'system', label: 'System', description: 'Follow your device', icon: Monitor },
+];
 
 export default function Settings() {
   const [user, setUser] = useState(null);
+  const { preference, setTheme } = useTheme();
 
   useEffect(() => {
     base44.auth.me().then(setUser).catch(() => {});
@@ -42,6 +50,36 @@ export default function Settings() {
             ) : (
               <div className="h-12 bg-muted rounded-lg animate-pulse" />
             )}
+          </CardContent>
+        </Card>
+
+        {/* Appearance */}
+        <Card>
+          <CardHeader><CardTitle className="text-base">Appearance</CardTitle></CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground mb-4">Choose how PDF Organizer looks to you</p>
+            <div className="grid grid-cols-3 gap-3">
+              {themeOptions.map(opt => {
+                const Icon = opt.icon;
+                const selected = preference === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    onClick={() => setTheme(opt.value)}
+                    className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${
+                      selected ? 'border-primary bg-primary/5' : 'border-border hover:border-muted-foreground/30 hover:bg-muted/50'
+                    }`}
+                    aria-pressed={selected}
+                  >
+                    <Icon className={`h-5 w-5 ${selected ? 'text-primary' : 'text-muted-foreground'}`} />
+                    <div className="text-center">
+                      <p className="text-sm font-medium">{opt.label}</p>
+                      <p className="text-xs text-muted-foreground">{opt.description}</p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
           </CardContent>
         </Card>
 
