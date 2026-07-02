@@ -5,7 +5,7 @@ import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, ArrowRight, Mail, Building, Search, Folder, Check, Loader2, FileText, Globe, Lock, Download } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Mail, Building, Search, Folder, Check, Loader2, FileText, Globe, Lock, Download, ExternalLink } from 'lucide-react';
 import DownloadFlow from '@/components/DownloadFlow';
 
 const steps = [
@@ -20,7 +20,7 @@ const steps = [
 const searchTypes = [
   { value: 'sender_email', label: 'Sender Email', description: 'Search by who sent the email', icon: Mail },
   { value: 'company_name', label: 'Company Name', description: 'Match company name in sender field', icon: Building },
-  { value: 'gmail_search', label: 'Gmail Search', description: 'Use a custom Gmail search query', icon: Search },
+  { value: 'gmail_search', label: 'Advanced Gmail Search', description: 'Use a custom Gmail search query', icon: Search },
 ];
 
 function suggestRuleName(data) {
@@ -41,7 +41,11 @@ function validateSearch(data) {
   if (data.search_type === 'sender_email') {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.search_value);
   }
-  return data.search_value.trim().length >= 2;
+  if (data.search_type === 'company_name') {
+    return data.search_value.trim().length >= 2;
+  }
+  // gmail_search: accept any non-empty input
+  return true;
 }
 
 export default function CreateRuleWizard() {
@@ -261,18 +265,26 @@ export default function CreateRuleWizard() {
               <p className="text-sm text-muted-foreground mb-6">
                 {data.search_type === 'sender_email' ? "Enter the sender's email address" :
                  data.search_type === 'company_name' ? 'Enter the company name to search for' :
-                 'Enter your Gmail search query (e.g. from:acme.com subject:invoice)'}
+                 'Enter your Gmail search query using any supported operators'}
               </p>
               <div className="space-y-3">
                 <Input
                   autoFocus
                   type={data.search_type === 'sender_email' ? 'email' : 'text'}
-                  placeholder={data.search_type === 'sender_email' ? 'billing@acme.com' : data.search_type === 'company_name' ? 'Acme Corp' : 'from:acme.com has:attachment'}
+                  placeholder={data.search_type === 'sender_email' ? 'billing@acme.com' : data.search_type === 'company_name' ? 'Acme Corp' : 'from:acme.com has:attachment filename:pdf'}
                   value={data.search_value}
                   onChange={e => setData({ ...data, search_value: e.target.value })}
                   onKeyDown={e => { if (e.key === 'Enter' && canProceed()) setStep(step + 1); }}
                   className="h-12"
                 />
+                {data.search_type === 'gmail_search' && (
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>Supports all Gmail search operators.</span>
+                    <a href="https://support.google.com/mail/answer/7190" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">
+                      Learn Gmail Search <ExternalLink className="h-3 w-3" />
+                    </a>
+                  </div>
+                )}
                 {data.search_value && !validateSearch(data) && (
                   <p className="text-sm text-destructive">
                     {data.search_type === 'sender_email' ? 'Please enter a valid email address' : 'Please enter at least 2 characters'}

@@ -11,7 +11,7 @@ import { Plus, Play, Pencil, Trash2, Folder, Clock } from 'lucide-react';
 const searchTypeLabels = {
   sender_email: 'Sender Email',
   company_name: 'Company Name',
-  gmail_search: 'Gmail Search',
+  gmail_search: 'Advanced Gmail Search',
 };
 
 const statusConfig = {
