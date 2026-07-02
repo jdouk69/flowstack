@@ -56,11 +56,16 @@ export default function Welcome() {
         <Button
           size="lg"
           className="h-14 px-8 text-base gap-3 shadow-lg shadow-primary/25"
-          onClick={() => setDownloadOpen(true)}
+          onClick={() => suppliers.length > 0 ? setDownloadOpen(true) : navigate('/rules/new')}
         >
           <Download className="h-5 w-5" />
           Download PDF Attachments
         </Button>
+        {!loading && suppliers.length === 0 && (
+          <p className="text-sm text-muted-foreground mt-3 max-w-md">
+            Create your first download rule to find and save PDFs from Gmail automatically.
+          </p>
+        )}
       </div>
 
       {/* Recent Downloads & Recent Rules */}
