@@ -85,6 +85,13 @@ export default function CreateRuleWizard() {
     }
   }, [step]);
 
+  // Clear stale preview when navigating back from step 6
+  const handleBack = () => {
+    if (step === 6) { setPreview(null); setPreviewLoading(false); }
+    if (step > 1) setStep(step - 1);
+    else navigate('/rules');
+  };
+
   useEffect(() => {
     if (step === 6 && !preview && !previewLoading) {
       runPreview();
@@ -400,7 +407,7 @@ export default function CreateRuleWizard() {
 
       {/* Navigation */}
       <div className="flex items-center justify-between mt-8 pt-6 border-t">
-        <Button variant="ghost" onClick={() => step > 1 ? setStep(step - 1) : navigate('/rules')} className="gap-2">
+        <Button variant="ghost" onClick={handleBack} className="gap-2">
           <ArrowLeft className="h-4 w-4" /> {step > 1 ? 'Back' : 'Cancel'}
         </Button>
         <div className="flex gap-2">

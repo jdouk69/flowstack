@@ -23,18 +23,19 @@ export default function Welcome() {
   const [downloadOpen, setDownloadOpen] = useState(false);
   const navigate = useNavigate();
 
-  useEffect(() => {
-    Promise.all([
+  const loadData = async () => {
+    const [u, s, h] = await Promise.all([
       base44.auth.me().catch(() => null),
       base44.entities.Supplier.list().catch(() => []),
       base44.entities.RunHistory.list('-run_date', 5).catch(() => []),
-    ]).then(([u, s, h]) => {
-      setUser(u);
-      setSuppliers(s);
-      setHistory(h);
-      setLoading(false);
-    });
-  }, []);
+    ]);
+    setUser(u);
+    setSuppliers(s);
+    setHistory(h);
+    setLoading(false);
+  };
+
+  useEffect(() => { loadData(); }, []);
 
   const firstName = user?.full_name?.split(' ')[0] || user?.email?.split('@')[0] || 'there';
 
@@ -152,6 +153,7 @@ export default function Welcome() {
         onClose={() => setDownloadOpen(false)}
         supplierId="all"
         suppliers={suppliers}
+        onComplete={loadData}
       />
     </div>
   );
