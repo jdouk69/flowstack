@@ -5,7 +5,9 @@ import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, ArrowRight, Mail, Building, Search, Folder, Check, Loader2, FileText, Globe, Lock, Download, ExternalLink, ChevronDown, Lightbulb } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Mail, Building, Search, Folder, Check, Loader2, FileText, Globe, Lock, Download, ExternalLink, ChevronDown, Lightbulb, Wrench } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import DownloadFlow from '@/components/DownloadFlow';
 
 const gmailSearchExamples = [
@@ -73,6 +75,16 @@ export default function CreateRuleWizard() {
   const [loadingExisting, setLoadingExisting] = useState(!!id);
   const [examplesExpanded, setExamplesExpanded] = useState(false);
   const [selectedExample, setSelectedExample] = useState(null);
+  const [builderExpanded, setBuilderExpanded] = useState(false);
+  const [builder, setBuilder] = useState({
+    sender1: '',
+    sender2: '',
+    keyword: '',
+    hasAttachment: false,
+    fileType: 'pdf',
+    afterDate: '',
+    beforeDate: '',
+  });
 
   useEffect(() => {
     if (id) {
@@ -125,6 +137,27 @@ export default function CreateRuleWizard() {
       setPreview({ error: e.response?.data?.error || e.message });
     }
     setPreviewLoading(false);
+  };
+
+  const generateQuery = () => {
+    const parts = [];
+    if (builder.sender1 && builder.sender2) {
+      parts.push(`(from:${builder.sender1} OR from:${builder.sender2})`);
+    } else if (builder.sender1) {
+      parts.push(`from:${builder.sender1}`);
+    }
+    if (builder.keyword) parts.push(builder.keyword);
+    if (builder.hasAttachment || builder.fileType !== 'none') {
+      if (builder.fileType === 'pdf') parts.push('filename:pdf');
+      else if (builder.fileType === 'word') parts.push('filename:doc OR filename:docx');
+      else if (builder.fileType === 'excel') parts.push('filename:xls OR filename:xlsx');
+      else if (builder.fileType === 'images') parts.push('filename:jpg OR filename:jpeg OR filename:png OR filename:gif');
+      else if (builder.fileType === 'zip') parts.push('filename:zip');
+      else if (builder.hasAttachment) parts.push('has:attachment');
+    }
+    if (builder.afterDate) parts.push(`after:${builder.afterDate.replace(/-/g, '/')}`);
+    if (builder.beforeDate) parts.push(`before:${builder.beforeDate.replace(/-/g, '/')}`);
+    return parts.join(' ');
   };
 
   const canProceed = () => {
@@ -288,6 +321,125 @@ export default function CreateRuleWizard() {
                 />
                 {data.search_type === 'gmail_search' && (
                   <>
+                    {/* Search Builder */}
+                    <div className="rounded-xl border border-border overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => setBuilderExpanded(!builderExpanded)}
+                        className="w-full flex items-center gap-2 p-3 text-sm text-muted-foreground hover:bg-muted/50 transition-colors"
+                      >
+                        <Wrench className="h-4 w-4" />
+                        Need help building a Gmail search?
+                        <ChevronDown className={`h-4 w-4 ml-auto transition-transform ${builderExpanded ? 'rotate-180' : ''}`} />
+                      </button>
+                      {builderExpanded && (
+                        <div className="p-4 pt-0 space-y-4 animate-fade-in">
+                          <div className="grid sm:grid-cols-2 gap-3">
+                            <div className="space-y-1.5">
+                              <Label className="text-xs">Sender Email</Label>
+                              <Input
+                                type="email"
+                                placeholder="tournag@otenet.gr"
+                                value={builder.sender1}
+                                onChange={e => setBuilder({ ...builder, sender1: e.target.value })}
+                                className="h-9 text-sm"
+                              />
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label className="text-xs">Additional Sender Email (optional)</Label>
+                              <Input
+                                type="email"
+                                placeholder="info@tournas.com.gr"
+                                value={builder.sender2}
+                                onChange={e => setBuilder({ ...builder, sender2: e.target.value })}
+                                className="h-9 text-sm"
+                              />
+                            </div>
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs">Keyword (optional)</Label>
+                            <Input
+                              type="text"
+                              placeholder="invoice"
+                              value={builder.keyword}
+                              onChange={e => setBuilder({ ...builder, keyword: e.target.value })}
+                              className="h-9 text-sm"
+                            />
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <div className="flex items-center space-x-2">
+                              <Checkbox
+                                id="has-attachment"
+                                checked={builder.hasAttachment}
+                                onCheckedChange={v => setBuilder({ ...builder, hasAttachment: v })}
+                              />
+                              <Label htmlFor="has-attachment" className="text-sm cursor-pointer">Has Attachment</Label>
+                            </div>
+                          </div>
+                          <div className="grid sm:grid-cols-2 gap-3">
+                            <div className="space-y-1.5">
+                              <Label className="text-xs">File Type</Label>
+                              <Select
+                                value={builder.fileType}
+                                onValueChange={v => setBuilder({ ...builder, fileType: v })}
+                              >
+                                <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="none">Any</SelectItem>
+                                  <SelectItem value="pdf">PDF</SelectItem>
+                                  <SelectItem value="word">Word</SelectItem>
+                                  <SelectItem value="excel">Excel</SelectItem>
+                                  <SelectItem value="images">Images</SelectItem>
+                                  <SelectItem value="zip">ZIP</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                          <div className="grid sm:grid-cols-2 gap-3">
+                            <div className="space-y-1.5">
+                              <Label className="text-xs">After</Label>
+                              <Input
+                                type="date"
+                                value={builder.afterDate}
+                                onChange={e => setBuilder({ ...builder, afterDate: e.target.value })}
+                                className="h-9 text-sm"
+                              />
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label className="text-xs">Before</Label>
+                              <Input
+                                type="date"
+                                value={builder.beforeDate}
+                                onChange={e => setBuilder({ ...builder, beforeDate: e.target.value })}
+                                className="h-9 text-sm"
+                              />
+                            </div>
+                          </div>
+
+                          {generateQuery() && (
+                            <div className="space-y-2">
+                              <Label className="text-xs text-muted-foreground">Generated query:</Label>
+                              <div className="p-3 rounded-lg bg-muted/50 border border-border">
+                                <code className="text-sm font-mono break-all">{generateQuery()}</code>
+                              </div>
+                              <Button
+                                type="button"
+                                size="sm"
+                                className="gap-2 w-full"
+                                onClick={() => {
+                                  setData({ ...data, search_value: generateQuery() });
+                                  setBuilderExpanded(false);
+                                }}
+                              >
+                                <Check className="h-3.5 w-3.5" /> Use This Query
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Search Examples */}
                     <div className="flex items-center justify-between text-xs text-muted-foreground">
                       <span>Supports all Gmail search operators.</span>
                       <button
@@ -344,7 +496,7 @@ export default function CreateRuleWizard() {
                   </p>
                 )}
                 {data.search_value && validateSearch(data) && (
-                  <p className="text-sm text-green-600 flex items-center gap-1">
+                  <p className="text-sm text-emerald-600 flex items-center gap-1">
                     <Check className="h-4 w-4" /> Looks good!
                   </p>
                 )}
