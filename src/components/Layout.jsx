@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { Home, FileText, History, Settings as SettingsIcon, LogOut, Menu, X } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
+import Logo from '@/components/Logo';
 import { Button } from '@/components/ui/button';
 import { useTheme } from '@/hooks/useTheme';
 
@@ -37,11 +38,8 @@ export default function Layout() {
         <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(true)} className="mr-2" aria-label="Open menu">
           <Menu className="h-5 w-5" />
         </Button>
-        <Link to="/" className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center">
-            <FileText className="h-4 w-4 text-primary-foreground" />
-          </div>
-          <span className="font-semibold">PDF Organizer</span>
+        <Link to="/">
+          <Logo size="sm" />
         </Link>
       </header>
 
@@ -53,11 +51,8 @@ export default function Layout() {
       {/* Sidebar */}
       <aside className={`fixed top-0 left-0 z-50 h-full w-64 bg-background border-r transition-transform duration-300 lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="h-16 flex items-center justify-between px-5 border-b">
-          <Link to="/" className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-primary flex items-center justify-center shadow-sm">
-              <FileText className="h-4 w-4 text-primary-foreground" />
-            </div>
-            <span className="font-semibold text-sm">PDF Organizer</span>
+          <Link to="/">
+            <Logo size="md" />
           </Link>
           <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setSidebarOpen(false)} aria-label="Close menu">
             <X className="h-4 w-4" />

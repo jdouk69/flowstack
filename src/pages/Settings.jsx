@@ -57,7 +57,7 @@ export default function Settings() {
         <Card>
           <CardHeader><CardTitle className="text-base">Appearance</CardTitle></CardHeader>
           <CardContent>
-            <p className="text-sm text-muted-foreground mb-4">Choose how PDF Organizer looks to you</p>
+            <p className="text-sm text-muted-foreground mb-4">Choose how InboxVault looks to you</p>
             <div className="grid grid-cols-3 gap-3">
               {themeOptions.map(opt => {
                 const Icon = opt.icon;
@@ -97,7 +97,7 @@ export default function Settings() {
                   <p className="text-xs text-muted-foreground">Read-only access for searching PDFs</p>
                 </div>
               </div>
-              <span className="inline-flex items-center gap-1.5 text-sm text-green-600 font-medium">
+              <span className="inline-flex items-center gap-1.5 text-sm text-emerald-600 font-medium">
                 <CheckCircle2 className="h-4 w-4" /> Connected
               </span>
             </div>
@@ -111,7 +111,7 @@ export default function Settings() {
                   <p className="text-xs text-muted-foreground">Full access for saving and merging PDFs</p>
                 </div>
               </div>
-              <span className="inline-flex items-center gap-1.5 text-sm text-green-600 font-medium">
+              <span className="inline-flex items-center gap-1.5 text-sm text-emerald-600 font-medium">
                 <CheckCircle2 className="h-4 w-4" /> Connected
               </span>
             </div>

@@ -10,9 +10,9 @@ import { Download, FileText, History, ArrowRight, Clock, Plus } from 'lucide-rea
 
 function getGreeting() {
   const hour = new Date().getHours();
-  if (hour < 12) return 'Good morning';
-  if (hour < 18) return 'Good afternoon';
-  return 'Good evening';
+  if (hour < 12) return 'Good Morning';
+  if (hour < 18) return 'Good Afternoon';
+  return 'Good Evening';
 }
 
 export default function Welcome() {
@@ -44,11 +44,14 @@ export default function Welcome() {
       {/* Greeting */}
       <div className="mb-10 animate-slide-up">
         <p className="text-muted-foreground text-sm font-medium">
-          {getGreeting()}, {firstName}
+          {getGreeting()}, {firstName} 👋
         </p>
-        <h1 className="text-3xl sm:text-4xl font-bold mt-2 text-balance">
-          What would you like to organize today?
+        <h1 className="text-4xl sm:text-5xl font-bold tracking-tight mt-2 text-balance">
+          Welcome to InboxVault
         </h1>
+        <p className="text-base text-muted-foreground mt-3">
+          Your documents. Automatically organized.
+        </p>
       </div>
 
       {/* Primary action */}
@@ -59,13 +62,11 @@ export default function Welcome() {
           onClick={() => suppliers.length > 0 ? setDownloadOpen(true) : navigate('/rules/new')}
         >
           <Download className="h-5 w-5" />
-          Download PDF Attachments
+          Start Download
         </Button>
-        {!loading && suppliers.length === 0 && (
-          <p className="text-sm text-muted-foreground mt-3 max-w-md">
-            Create your first download rule to find and save PDFs from Gmail automatically.
-          </p>
-        )}
+        <p className="text-sm text-muted-foreground mt-3 max-w-md">
+          Search Gmail. Find attachments. Organize everything automatically.
+        </p>
       </div>
 
       {/* Recent Downloads & Recent Rules */}
@@ -101,7 +102,7 @@ export default function Welcome() {
                         {new Date(run.run_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                       </p>
                     </div>
-                    <span className="text-sm font-semibold text-green-600">{run.pdfs_saved}</span>
+                    <span className="text-sm font-semibold text-emerald-600">{run.pdfs_saved}</span>
                   </div>
                 ))}
               </div>

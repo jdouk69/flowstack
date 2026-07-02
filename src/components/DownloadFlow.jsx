@@ -142,9 +142,9 @@ export default function DownloadFlow({ open, onClose, supplierId, suppliers = []
                     initial={{ scale: 0 }}
                     animate={{ scale: 1 }}
                     transition={{ type: 'spring', damping: 15, stiffness: 200, delay: 0.1 }}
-                    className="w-16 h-16 mx-auto mb-5 rounded-full bg-green-100 dark:bg-green-950 flex items-center justify-center"
+                    className="w-16 h-16 mx-auto mb-5 rounded-full bg-emerald-100 dark:bg-emerald-950 flex items-center justify-center"
                   >
-                    <motion.svg viewBox="0 0 24 24" className="w-8 h-8 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                    <motion.svg viewBox="0 0 24 24" className="w-8 h-8 text-emerald-600 dark:text-emerald-400" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                       <motion.path
                         d="M5 13 L10 18 L19 7"
                         initial={{ pathLength: 0 }}
@@ -158,7 +158,7 @@ export default function DownloadFlow({ open, onClose, supplierId, suppliers = []
 
                   <div className="grid grid-cols-3 gap-3 mb-6">
                     <div className="p-3 rounded-xl bg-muted/50">
-                      <p className="text-2xl font-bold text-green-600">{totals.pdfs_saved}</p>
+                      <p className="text-2xl font-bold text-emerald-600">{totals.pdfs_saved}</p>
                       <p className="text-xs text-muted-foreground mt-0.5">PDFs Saved</p>
                     </div>
                     <div className="p-3 rounded-xl bg-muted/50">
@@ -177,7 +177,7 @@ export default function DownloadFlow({ open, onClose, supplierId, suppliers = []
                         <a key={i} href={r.drive_folder_link} target="_blank" rel="noopener noreferrer"
                           className="flex items-center justify-between text-sm py-1.5 px-3 rounded-lg bg-muted/30 hover:bg-muted/60 transition-colors">
                           <span className="font-medium">{r.supplier_name}</span>
-                          <span className="text-green-600">{r.pdfs_saved} saved</span>
+                          <span className="text-emerald-600">{r.pdfs_saved} saved</span>
                         </a>
                       ))}
                     </div>
@@ -209,9 +209,9 @@ export default function DownloadFlow({ open, onClose, supplierId, suppliers = []
                     initial={{ scale: 0 }}
                     animate={{ scale: 1 }}
                     transition={{ type: 'spring', damping: 15, stiffness: 200, delay: 0.1 }}
-                    className="w-16 h-16 mx-auto mb-5 rounded-full bg-green-100 dark:bg-green-950 flex items-center justify-center"
+                    className="w-16 h-16 mx-auto mb-5 rounded-full bg-emerald-100 dark:bg-emerald-950 flex items-center justify-center"
                   >
-                    <motion.svg viewBox="0 0 24 24" className="w-8 h-8 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                    <motion.svg viewBox="0 0 24 24" className="w-8 h-8 text-emerald-600 dark:text-emerald-400" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                       <motion.path
                         d="M5 13 L10 18 L19 7"
                         initial={{ pathLength: 0 }}

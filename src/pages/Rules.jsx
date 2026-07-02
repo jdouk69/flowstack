@@ -16,7 +16,7 @@ const searchTypeLabels = {
 
 const statusConfig = {
   new: { label: 'New', className: 'bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-400' },
-  active: { label: 'Active', className: 'bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-400' },
+  active: { label: 'Active', className: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400' },
   error: { label: 'Needs Attention', className: 'bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-400' },
 };
 

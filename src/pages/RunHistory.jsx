@@ -70,7 +70,7 @@ export default function RunHistory() {
                       <td className="p-4 font-medium">{run.supplier_name}</td>
                       <td className="p-4 text-center">{run.emails_found}</td>
                       <td className="p-4 text-center">
-                        <span className="inline-flex items-center gap-1 text-green-600 font-medium">
+                        <span className="inline-flex items-center gap-1 text-emerald-600 font-medium">
                           {run.pdfs_saved > 0 && <CheckCircle className="h-3.5 w-3.5" />}
                           {run.pdfs_saved}
                         </span>
@@ -102,7 +102,7 @@ export default function RunHistory() {
                   </div>
                   <div className="grid grid-cols-4 gap-2 text-center text-xs">
                     <div><div className="text-muted-foreground">Emails</div><div className="font-semibold">{run.emails_found}</div></div>
-                    <div><div className="text-muted-foreground">Saved</div><div className="font-semibold text-green-600">{run.pdfs_saved}</div></div>
+                    <div><div className="text-muted-foreground">Saved</div><div className="font-semibold text-emerald-600">{run.pdfs_saved}</div></div>
                     <div><div className="text-muted-foreground">Dupes</div><div className="font-semibold text-amber-600">{run.duplicates_skipped}</div></div>
                     <div><div className="text-muted-foreground">Errors</div><div className="font-semibold text-red-600">{run.errors}</div></div>
                   </div>
