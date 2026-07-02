@@ -3,6 +3,11 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
 import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
+import Layout from '@/components/Layout';
+import Dashboard from '@/pages/Dashboard';
+import Suppliers from '@/pages/Suppliers';
+import RunHistory from '@/pages/RunHistory';
+import Settings from '@/pages/Settings';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import ScrollToTop from './components/ScrollToTop';
@@ -34,7 +39,12 @@ const AuthenticatedApp = () => {
   // Render the main app
   return (
     <Routes>
-      {/* Add your page Route elements here */}
+      <Route element={<Layout />}>
+        <Route path="/" element={<Dashboard />} />
+        <Route path="/suppliers" element={<Suppliers />} />
+        <Route path="/run-history" element={<RunHistory />} />
+        <Route path="/settings" element={<Settings />} />
+      </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );

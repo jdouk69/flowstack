@@ -1,0 +1,66 @@
+{
+  "name": "RunHistory",
+  "type": "object",
+  "properties": {
+    "run_date": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Run Date"
+    },
+    "supplier_id": {
+      "type": "string",
+      "title": "Supplier ID"
+    },
+    "supplier_name": {
+      "type": "string",
+      "title": "Supplier Name"
+    },
+    "emails_found": {
+      "type": "number",
+      "title": "Emails Found",
+      "default": 0
+    },
+    "pdfs_saved": {
+      "type": "number",
+      "title": "PDFs Saved",
+      "default": 0
+    },
+    "duplicates_skipped": {
+      "type": "number",
+      "title": "Duplicates Skipped",
+      "default": 0
+    },
+    "errors": {
+      "type": "number",
+      "title": "Errors",
+      "default": 0
+    },
+    "drive_folder_link": {
+      "type": "string",
+      "title": "Drive Folder Link",
+      "default": ""
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "completed",
+        "partial",
+        "failed"
+      ],
+      "default": "completed",
+      "title": "Status"
+    },
+    "error_details": {
+      "type": "string",
+      "title": "Error Details",
+      "default": ""
+    }
+  },
+  "required": [
+    "supplier_name",
+    "emails_found",
+    "pdfs_saved",
+    "duplicates_skipped",
+    "errors"
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "name": "Supplier",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "title": "Supplier Name"
+    },
+    "email": {
+      "type": "string",
+      "format": "email",
+      "title": "Email Address"
+    },
+    "keyword": {
+      "type": "string",
+      "title": "Keyword (optional)",
+      "default": ""
+    },
+    "drive_folder_name": {
+      "type": "string",
+      "title": "Drive Folder Name"
+    }
+  },
+  "required": [
+    "name",
+    "email",
+    "drive_folder_name"
+  ]
+}
