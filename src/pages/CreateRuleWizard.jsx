@@ -5,8 +5,15 @@ import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, ArrowRight, Mail, Building, Search, Folder, Check, Loader2, FileText, Globe, Lock, Download, ExternalLink } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Mail, Building, Search, Folder, Check, Loader2, FileText, Globe, Lock, Download, ExternalLink, ChevronDown, Lightbulb } from 'lucide-react';
 import DownloadFlow from '@/components/DownloadFlow';
+
+const gmailSearchExamples = [
+  { label: 'Invoices from one sender', query: 'from:amazon.com filename:pdf' },
+  { label: 'Invoices from multiple senders', query: '(from:tournag@otenet.gr OR from:info@tournas.com.gr) filename:pdf' },
+  { label: 'Recent PDF attachments', query: 'has:attachment filename:pdf newer_than:1y' },
+  { label: 'Search by keyword', query: 'invoice filename:pdf' },
+];
 
 const steps = [
   { num: 1, title: 'Source' },
@@ -64,6 +71,8 @@ export default function CreateRuleWizard() {
   const [downloadOpen, setDownloadOpen] = useState(false);
   const [savedSupplierId, setSavedSupplierId] = useState(null);
   const [loadingExisting, setLoadingExisting] = useState(!!id);
+  const [examplesExpanded, setExamplesExpanded] = useState(false);
+  const [selectedExample, setSelectedExample] = useState(null);
 
   useEffect(() => {
     if (id) {
@@ -278,12 +287,56 @@ export default function CreateRuleWizard() {
                   className="h-12"
                 />
                 {data.search_type === 'gmail_search' && (
-                  <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span>Supports all Gmail search operators.</span>
-                    <a href="https://support.google.com/mail/answer/7190" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">
-                      Learn Gmail Search <ExternalLink className="h-3 w-3" />
-                    </a>
-                  </div>
+                  <>
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span>Supports all Gmail search operators.</span>
+                      <button
+                        type="button"
+                        onClick={() => setExamplesExpanded(!examplesExpanded)}
+                        className="text-primary hover:underline inline-flex items-center gap-1"
+                      >
+                        <Lightbulb className="h-3 w-3" />
+                        Search Examples
+                        <ChevronDown className={`h-3 w-3 transition-transform ${examplesExpanded ? 'rotate-180' : ''}`} />
+                      </button>
+                    </div>
+
+                    {examplesExpanded && (
+                      <div className="space-y-2 animate-fade-in">
+                        <p className="text-xs text-muted-foreground">Click an example to use it:</p>
+                        {gmailSearchExamples.map((ex, i) => {
+                          const isSelected = selectedExample === i;
+                          return (
+                            <button
+                              key={i}
+                              type="button"
+                              onClick={() => {
+                                setData({ ...data, search_value: ex.query });
+                                setSelectedExample(i);
+                              }}
+                              className={`w-full text-left p-3 rounded-xl border transition-all ${
+                                isSelected
+                                  ? 'border-primary bg-primary/5 ring-1 ring-primary/20'
+                                  : 'border-border hover:border-muted-foreground/30 hover:bg-muted/50'
+                              }`}
+                            >
+                              <p className="text-sm font-medium">{ex.label}</p>
+                              <code className="text-xs text-muted-foreground font-mono">{ex.query}</code>
+                            </button>
+                          );
+                        })}
+                        <a
+                          href="https://support.google.com/mail/answer/7190"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline mt-1"
+                        >
+                          <ExternalLink className="h-3.5 w-3.5" />
+                          Learn Gmail Search
+                        </a>
+                      </div>
+                    )}
+                  </>
                 )}
                 {data.search_value && !validateSearch(data) && (
                   <p className="text-sm text-destructive">
