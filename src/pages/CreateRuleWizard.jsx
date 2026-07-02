@@ -28,7 +28,7 @@ function suggestRuleName(data) {
     const domain = data.search_value.split('@')[1]?.split('.')[0];
     return domain ? domain.charAt(0).toUpperCase() + domain.slice(1) : data.search_value;
   }
-  return data.search_value || 'New Rule';
+  return data.search_value || 'New Workflow';
 }
 
 function suggestFolderName(data) {
@@ -176,7 +176,7 @@ export default function CreateRuleWizard() {
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <div>
-          <h1 className="text-xl font-bold">{id ? 'Edit Rule' : 'New Rule'}</h1>
+          <h1 className="text-xl font-bold">{id ? 'Edit Workflow' : 'New Workflow'}</h1>
           <p className="text-sm text-muted-foreground">Step {step} of {steps.length}</p>
         </div>
       </div>
@@ -340,7 +340,7 @@ export default function CreateRuleWizard() {
               <p className="text-sm text-muted-foreground mb-6">We've suggested names based on your search</p>
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="rule-name">Rule Name</Label>
+                  <Label htmlFor="rule-name">Workflow Name</Label>
                   <Input id="rule-name" value={data.name} onChange={e => setData({ ...data, name: e.target.value })} placeholder="My Download Rule" className="h-12" />
                 </div>
                 <div className="space-y-2">
@@ -430,7 +430,7 @@ export default function CreateRuleWizard() {
           ) : (
             <>
               <Button variant="outline" onClick={() => handleSave(false)} disabled={saving}>
-                Save Rule
+                Save Workflow
               </Button>
               <Button onClick={() => handleSave(true)} disabled={saving || preview?.pdfs_found === 0} className="gap-2">
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}

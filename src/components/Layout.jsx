@@ -8,7 +8,7 @@ import { useTheme } from '@/hooks/useTheme';
 
 const navItems = [
   { path: '/', label: 'Home', icon: Home },
-  { path: '/rules', label: 'Rules', icon: FileText },
+  { path: '/rules', label: 'Workflows', icon: FileText },
   { path: '/run-history', label: 'History', icon: History },
   { path: '/settings', label: 'Settings', icon: SettingsIcon },
 ];

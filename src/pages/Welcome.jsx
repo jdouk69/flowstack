@@ -114,7 +114,7 @@ export default function Welcome() {
         <Card className="animate-slide-up" style={{ animationDelay: '0.3s' }}>
           <CardContent className="p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold">Recent Rules</h2>
+              <h2 className="font-semibold">Recent Workflows</h2>
               <button onClick={() => navigate('/rules')} className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
                 View all <ArrowRight className="h-3 w-3" />
               </button>
@@ -126,9 +126,9 @@ export default function Welcome() {
             ) : suppliers.length === 0 ? (
               <EmptyState
                 icon={FileText}
-                title="No rules yet"
-                description="Create a rule to automate PDF downloads."
-                action={<Button size="sm" onClick={() => navigate('/rules/new')} className="gap-2"><Plus className="h-4 w-4" /> Create Rule</Button>}
+                title="No workflows yet"
+                description="Create a workflow to automate PDF downloads."
+                action={<Button size="sm" onClick={() => navigate('/rules/new')} className="gap-2"><Plus className="h-4 w-4" /> Create Workflow</Button>}
                 compact
               />
             ) : (
