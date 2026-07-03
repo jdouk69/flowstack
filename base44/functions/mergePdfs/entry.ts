@@ -59,8 +59,6 @@ async function uploadFileToDrive(driveAuth, filename, folderId, data) {
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const isAuthed = await base44.auth.isAuthenticated();
-    if (!isAuthed) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await req.json();
     const { supplier_id } = body;
