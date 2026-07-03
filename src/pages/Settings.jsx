@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Mail, Folder, LogOut, CheckCircle2, Shield, Sun, Moon, Monitor } from 'lucide-react';
+import { Mail, Folder, LogOut, CheckCircle2, Shield, Sun, Moon, Monitor, AlertTriangle } from 'lucide-react';
 import { useTheme } from '@/hooks/useTheme';
 
 const themeOptions = [
@@ -117,6 +117,23 @@ export default function Settings() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Admin note — connector migration */}
+        {user?.role === 'admin' && (
+          <Card className="border-amber-300 dark:border-amber-800/50">
+            <CardContent className="p-4">
+              <div className="flex items-start gap-3 p-4 rounded-xl bg-amber-50 dark:bg-amber-950/30">
+                <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium text-amber-900 dark:text-amber-200">Admin Notice: Connector Migration Required</p>
+                  <p className="text-xs text-amber-700 dark:text-amber-400 mt-1 leading-relaxed">
+                    Current Google connectors are shared builder connectors. InboxVault is currently safe for personal/private use only. Before public release, migrate Gmail and Google Drive to APP_USER connectors so each user connects their own Google account.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Privacy */}
         <Card>
