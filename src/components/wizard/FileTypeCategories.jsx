@@ -100,10 +100,17 @@ export default function FileTypeCategories({ value = [], onChange }) {
           <Layers className="h-5 w-5 text-primary" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="font-medium">All Attachments</p>
+          <p className="font-medium">All Supported Types</p>
           <p className="text-xs text-muted-foreground">Download every supported file type</p>
         </div>
         <span className="text-xs font-medium text-muted-foreground bg-muted px-2 py-1 rounded-full shrink-0">{ALL_TYPE_IDS.length} types</span>
+      </div>
+
+      {/* Helper text */}
+      <div className="mt-2 p-3 rounded-lg bg-muted/50 border border-border">
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          All Supported Types downloads every file type InboxVault currently supports. Some unsupported attachments like CSV, TXT, DWG, MP4, and others will be ignored.
+        </p>
       </div>
 
       {/* Category cards */}
