@@ -16,9 +16,10 @@ function base64UrlToUint8Array(base64url) {
 
 const FILE_TYPE_EXTENSIONS = {
   pdf: ['pdf'],
-  images: ['jpg', 'jpeg', 'png', 'heic'],
+  images: ['jpg', 'jpeg', 'png', 'heic', 'gif', 'webp', 'tif', 'tiff'],
   word: ['doc', 'docx'],
   excel: ['xls', 'xlsx'],
+  powerpoint: ['ppt', 'pptx'],
   zip: ['zip'],
 };
 

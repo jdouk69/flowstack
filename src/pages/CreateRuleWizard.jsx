@@ -9,6 +9,7 @@ import { ArrowLeft, ArrowRight, Mail, Building, Search, Folder, Check, Loader2, 
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import DownloadFlow from '@/components/DownloadFlow';
+import FileTypeCategories from '@/components/wizard/FileTypeCategories';
 
 const gmailSearchExamples = [
   { label: 'Invoices from one sender', query: 'from:amazon.com filename:pdf' },
@@ -167,7 +168,7 @@ export default function CreateRuleWizard() {
     if (step === 1) return true;
     if (step === 2) return true;
     if (step === 3) return validateSearch(data);
-    if (step === 4) return true;
+    if (step === 4) return (data.file_types?.length || 0) > 0;
     if (step === 5) return data.name?.trim() && data.drive_folder_name?.trim();
     return true;
   };
@@ -511,39 +512,11 @@ export default function CreateRuleWizard() {
           {step === 4 && (
             <div>
               <h2 className="text-lg font-semibold mb-1">Choose file types</h2>
-              <p className="text-sm text-muted-foreground mb-6">Select which attachments to download</p>
-              <div className="space-y-2">
-                {[
-                  { value: 'pdf', label: 'PDF Documents', desc: '.pdf' },
-                  { value: 'images', label: 'Images', desc: '.jpg, .jpeg, .png, .heic' },
-                  { value: 'word', label: 'Word Documents', desc: '.doc, .docx' },
-                  { value: 'excel', label: 'Excel Spreadsheets', desc: '.xls, .xlsx' },
-                  { value: 'zip', label: 'ZIP Archives', desc: '.zip' },
-                ].map(ft => {
-                  const selected = data.file_types?.includes(ft.value);
-                  return (
-                    <div key={ft.value} onClick={() => {
-                      const current = data.file_types || [];
-                      const updated = selected
-                        ? current.filter(t => t !== ft.value)
-                        : [...current, ft.value];
-                      if (updated.length === 0) return;
-                      setData({ ...data, file_types: updated });
-                    }}
-                      className={`flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer transition-colors ${selected ? 'border-primary bg-primary/5' : 'border-muted hover:border-muted-foreground/30'}`}>
-                      <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${selected ? 'border-primary bg-primary' : 'border-muted'}`}>
-                        {selected && <Check className="h-3 w-3 text-primary-foreground" />}
-                      </div>
-                      <div className="flex-1">
-                        <p className="font-medium">{ft.label}</p>
-                        <p className="text-xs text-muted-foreground">{ft.desc}</p>
-                      </div>
-                      <FileText className={`h-5 w-5 ${selected ? 'text-primary' : 'text-muted-foreground'}`} />
-                    </div>
-                  );
-                })}
-              </div>
-              <p className="text-xs text-muted-foreground mt-4">At least one file type must be selected.</p>
+              <p className="text-sm text-muted-foreground mb-6">Choose which attachment types InboxVault should download.</p>
+              <FileTypeCategories
+                value={data.file_types}
+                onChange={(file_types) => setData({ ...data, file_types })}
+              />
             </div>
           )}
 
