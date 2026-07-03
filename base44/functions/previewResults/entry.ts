@@ -71,8 +71,8 @@ async function getMessage(gmailAuth, messageId) {
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    const isAuthed = await base44.auth.isAuthenticated();
+    if (!isAuthed) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await req.json();
     const { search_type, email, keyword, file_types } = body;
