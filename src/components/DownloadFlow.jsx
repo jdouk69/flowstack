@@ -115,7 +115,7 @@ export default function DownloadFlow({ open, onClose, supplierId, suppliers = []
                   </div>
                   <h3 className="text-lg font-semibold mb-1">
                     {phase === 'connecting' && 'Connecting to Gmail...'}
-                    {phase === 'searching' && 'Searching for PDFs...'}
+                    {phase === 'searching' && 'Searching for files...'}
                     {phase === 'merging' && 'Merging PDFs...'}
                   </h3>
                   <p className="text-sm text-muted-foreground mb-6">
@@ -154,12 +154,12 @@ export default function DownloadFlow({ open, onClose, supplierId, suppliers = []
                     </motion.svg>
                   </motion.div>
                   <h3 className="text-xl font-bold mb-1">Download Complete</h3>
-                  <p className="text-sm text-muted-foreground mb-5">Your PDFs have been saved to Google Drive</p>
+                  <p className="text-sm text-muted-foreground mb-5">Your files have been saved to Google Drive</p>
 
                   <div className="grid grid-cols-3 gap-3 mb-6">
                     <div className="p-3 rounded-xl bg-muted/50">
                       <p className="text-2xl font-bold text-emerald-600">{totals.pdfs_saved}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">PDFs Saved</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Files Saved</p>
                     </div>
                     <div className="p-3 rounded-xl bg-muted/50">
                       <p className="text-2xl font-bold text-amber-600">{totals.duplicates_skipped}</p>

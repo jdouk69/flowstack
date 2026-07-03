@@ -42,7 +42,7 @@ function suggestRuleName(data) {
 
 function suggestFolderName(data) {
   const name = data.name || suggestRuleName(data);
-  return `${name} PDFs`;
+  return `${name} Files`;
 }
 
 function validateSearch(data) {
@@ -66,6 +66,7 @@ export default function CreateRuleWizard() {
     search_type: 'sender_email',
     search_value: '',
     drive_folder_name: '',
+    file_types: ['pdf'],
   });
   const [preview, setPreview] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -94,6 +95,7 @@ export default function CreateRuleWizard() {
           search_type: s.search_type || 'sender_email',
           search_value: s.search_type === 'sender_email' ? (s.email || '') : (s.keyword || ''),
           drive_folder_name: s.drive_folder_name || '',
+          file_types: s.file_types || ['pdf'],
         });
         setLoadingExisting(false);
       }).catch(() => navigate('/rules'));
@@ -131,6 +133,7 @@ export default function CreateRuleWizard() {
         search_type: data.search_type,
         email: data.search_type === 'sender_email' ? data.search_value : '',
         keyword: data.search_type !== 'sender_email' ? data.search_value : '',
+        file_types: data.file_types,
       });
       setPreview(res.data);
     } catch (e) {
@@ -177,6 +180,7 @@ export default function CreateRuleWizard() {
       email: data.search_type === 'sender_email' ? data.search_value : '',
       keyword: data.search_type !== 'sender_email' ? data.search_value : '',
       drive_folder_name: data.drive_folder_name,
+      file_types: data.file_types,
     };
 
     let savedId = id;
@@ -278,7 +282,7 @@ export default function CreateRuleWizard() {
           {step === 2 && (
             <div>
               <h2 className="text-lg font-semibold mb-1">How would you like to search?</h2>
-              <p className="text-sm text-muted-foreground mb-6">Choose how to find emails with PDFs</p>
+              <p className="text-sm text-muted-foreground mb-6">Choose how to find emails with attachments</p>
               <div className="space-y-2">
                 {searchTypes.map(type => {
                   const Icon = type.icon;
@@ -509,33 +513,37 @@ export default function CreateRuleWizard() {
               <h2 className="text-lg font-semibold mb-1">Choose file types</h2>
               <p className="text-sm text-muted-foreground mb-6">Select which attachments to download</p>
               <div className="space-y-2">
-                <div className="flex items-center gap-3 p-4 rounded-xl border-2 border-primary bg-primary/5">
-                  <div className="w-5 h-5 rounded border-2 border-primary bg-primary flex items-center justify-center">
-                    <Check className="h-3 w-3 text-primary-foreground" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-medium">PDF Documents</p>
-                    <p className="text-xs text-muted-foreground">All .pdf attachments</p>
-                  </div>
-                  <FileText className="h-5 w-5 text-primary" />
-                </div>
-                <div className="flex items-center gap-3 p-4 rounded-xl border border-muted opacity-50 cursor-not-allowed">
-                  <div className="w-5 h-5 rounded border-2 border-muted" />
-                  <div className="flex-1">
-                    <p className="font-medium">Images</p>
-                    <p className="text-xs text-muted-foreground">Coming soon</p>
-                  </div>
-                  <Lock className="h-4 w-4 text-muted-foreground" />
-                </div>
-                <div className="flex items-center gap-3 p-4 rounded-xl border border-muted opacity-50 cursor-not-allowed">
-                  <div className="w-5 h-5 rounded border-2 border-muted" />
-                  <div className="flex-1">
-                    <p className="font-medium">Documents</p>
-                    <p className="text-xs text-muted-foreground">Coming soon</p>
-                  </div>
-                  <Lock className="h-4 w-4 text-muted-foreground" />
-                </div>
+                {[
+                  { value: 'pdf', label: 'PDF Documents', desc: '.pdf' },
+                  { value: 'images', label: 'Images', desc: '.jpg, .jpeg, .png, .heic' },
+                  { value: 'word', label: 'Word Documents', desc: '.doc, .docx' },
+                  { value: 'excel', label: 'Excel Spreadsheets', desc: '.xls, .xlsx' },
+                  { value: 'zip', label: 'ZIP Archives', desc: '.zip' },
+                ].map(ft => {
+                  const selected = data.file_types?.includes(ft.value);
+                  return (
+                    <div key={ft.value} onClick={() => {
+                      const current = data.file_types || [];
+                      const updated = selected
+                        ? current.filter(t => t !== ft.value)
+                        : [...current, ft.value];
+                      if (updated.length === 0) return;
+                      setData({ ...data, file_types: updated });
+                    }}
+                      className={`flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer transition-colors ${selected ? 'border-primary bg-primary/5' : 'border-muted hover:border-muted-foreground/30'}`}>
+                      <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${selected ? 'border-primary bg-primary' : 'border-muted'}`}>
+                        {selected && <Check className="h-3 w-3 text-primary-foreground" />}
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-medium">{ft.label}</p>
+                        <p className="text-xs text-muted-foreground">{ft.desc}</p>
+                      </div>
+                      <FileText className={`h-5 w-5 ${selected ? 'text-primary' : 'text-muted-foreground'}`} />
+                    </div>
+                  );
+                })}
               </div>
+              <p className="text-xs text-muted-foreground mt-4">At least one file type must be selected.</p>
             </div>
           )}
 
@@ -585,8 +593,8 @@ export default function CreateRuleWizard() {
                       <p className="text-xs text-muted-foreground mt-1">Emails Found</p>
                     </div>
                     <div className="p-4 rounded-xl bg-muted/50 text-center">
-                      <p className="text-3xl font-bold">{preview.pdfs_found}</p>
-                      <p className="text-xs text-muted-foreground mt-1">PDFs Found</p>
+                      <p className="text-3xl font-bold">{preview.files_found}</p>
+                      <p className="text-xs text-muted-foreground mt-1">Files Found</p>
                     </div>
                   </div>
 
@@ -610,9 +618,9 @@ export default function CreateRuleWizard() {
                     </div>
                   )}
 
-                  {preview.pdfs_found === 0 && (
+                  {preview.files_found === 0 && (
                     <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-950/30 text-sm text-amber-700 dark:text-amber-400">
-                      No PDFs found with these search criteria. Try adjusting your search.
+                      No files found with these search criteria. Try adjusting your search.
                     </div>
                   )}
                 </div>
@@ -637,9 +645,9 @@ export default function CreateRuleWizard() {
               <Button variant="outline" onClick={() => handleSave(false)} disabled={saving}>
                 Save Workflow
               </Button>
-              <Button onClick={() => handleSave(true)} disabled={saving || preview?.pdfs_found === 0} className="gap-2">
+              <Button onClick={() => handleSave(true)} disabled={saving || preview?.files_found === 0} className="gap-2">
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                Download PDFs
+                Download Files
               </Button>
             </>
           )}

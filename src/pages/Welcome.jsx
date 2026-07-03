@@ -127,7 +127,7 @@ export default function Welcome() {
               <EmptyState
                 icon={FileText}
                 title="No workflows yet"
-                description="Create a workflow to automate PDF downloads."
+                description="Create a workflow to automate file downloads."
                 action={<Button size="sm" onClick={() => navigate('/rules/new')} className="gap-2"><Plus className="h-4 w-4" /> Create Workflow</Button>}
                 compact
               />

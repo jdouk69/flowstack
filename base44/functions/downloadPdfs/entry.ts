@@ -14,13 +14,44 @@ function base64UrlToUint8Array(base64url) {
   return bytes;
 }
 
-function extractPdfAttachments(payload) {
+const FILE_TYPE_EXTENSIONS = {
+  pdf: ['pdf'],
+  images: ['jpg', 'jpeg', 'png', 'heic'],
+  word: ['doc', 'docx'],
+  excel: ['xls', 'xlsx'],
+  zip: ['zip'],
+};
+
+function getAllowedExtensions(fileTypes) {
+  const types = fileTypes && fileTypes.length > 0 ? fileTypes : ['pdf'];
+  const exts = new Set();
+  for (const t of types) {
+    const extensions = FILE_TYPE_EXTENSIONS[t];
+    if (extensions) extensions.forEach(e => exts.add(e));
+  }
+  return exts;
+}
+
+function getExtension(filename) {
+  const parts = filename.split('.');
+  return parts.length > 1 ? parts.pop().toLowerCase() : '';
+}
+
+function extractAttachments(payload, allowedExtensions) {
   const attachments = [];
   function walk(parts) {
     if (!parts) return;
     for (const part of parts) {
-      if (part.filename && part.mimeType === 'application/pdf' && part.body && part.body.attachmentId) {
-        attachments.push({ filename: part.filename, attachmentId: part.body.attachmentId, size: part.body.size });
+      if (part.filename && part.body && part.body.attachmentId) {
+        const ext = getExtension(part.filename);
+        if (allowedExtensions.has(ext)) {
+          attachments.push({
+            filename: part.filename,
+            attachmentId: part.body.attachmentId,
+            size: part.body.size,
+            mimeType: part.mimeType || 'application/octet-stream'
+          });
+        }
       }
       if (part.parts) walk(part.parts);
     }
@@ -90,7 +121,7 @@ async function getAttachment(gmailAuth, messageId, attachmentId) {
   return data.data;
 }
 
-async function uploadFileToDrive(driveAuth, filename, folderId, pdfBytes) {
+async function uploadFileToDrive(driveAuth, filename, folderId, fileBytes, mimeType) {
   const metadata = { name: filename, parents: [folderId] };
   const boundary = '-------314159265358979323846';
   const delimiter = `--${boundary}\r\n`;
@@ -98,8 +129,8 @@ async function uploadFileToDrive(driveAuth, filename, folderId, pdfBytes) {
 
   const body = new Blob([
     delimiter + 'Content-Type: application/json; charset=UTF-8\r\n\r\n' + JSON.stringify(metadata) + '\r\n',
-    delimiter + 'Content-Type: application/pdf\r\n\r\n',
-    pdfBytes,
+    delimiter + `Content-Type: ${mimeType}\r\n\r\n`,
+    fileBytes,
     closeDelimiter
   ], { type: `multipart/related; boundary=${boundary}` });
 
@@ -127,11 +158,11 @@ async function processSupplier(supplier, gmailAuth, driveAuth) {
     const searchType = supplier.search_type || 'sender_email';
     const queries = [];
     if (searchType === 'sender_email' && supplier.email) {
-      queries.push(`from:${supplier.email} has:attachment filename:pdf`);
+      queries.push(`from:${supplier.email} has:attachment`);
     } else if (searchType === 'company_name' && supplier.keyword) {
-      queries.push(`from:${supplier.keyword} has:attachment filename:pdf`);
+      queries.push(`from:${supplier.keyword} has:attachment`);
     } else if (searchType === 'gmail_search' && supplier.keyword) {
-      queries.push(`${supplier.keyword} has:attachment filename:pdf`);
+      queries.push(`${supplier.keyword} has:attachment`);
     }
 
     const allMessageIds = new Set();
@@ -147,13 +178,14 @@ async function processSupplier(supplier, gmailAuth, driveAuth) {
     result.drive_folder_link = `https://drive.google.com/drive/folders/${folder.id}`;
 
     const existingFiles = await listExistingFiles(driveAuth, folder.id);
+    const allowedExtensions = getAllowedExtensions(supplier.file_types);
 
     for (const messageId of allMessageIds) {
       try {
         const message = await getMessage(gmailAuth, messageId);
         if (!message) { result.errors++; continue; }
 
-        const attachments = extractPdfAttachments(message.payload);
+        const attachments = extractAttachments(message.payload, allowedExtensions);
         for (const att of attachments) {
           try {
             if (existingFiles.has(att.filename)) {
@@ -163,8 +195,8 @@ async function processSupplier(supplier, gmailAuth, driveAuth) {
             const attachmentData = await getAttachment(gmailAuth, messageId, att.attachmentId);
             if (!attachmentData) { result.errors++; continue; }
 
-            const pdfBytes = base64UrlToUint8Array(attachmentData);
-            await uploadFileToDrive(driveAuth, att.filename, folder.id, pdfBytes);
+            const fileBytes = base64UrlToUint8Array(attachmentData);
+            await uploadFileToDrive(driveAuth, att.filename, folder.id, fileBytes, att.mimeType);
             existingFiles.add(att.filename);
             result.pdfs_saved++;
           } catch (attErr) {

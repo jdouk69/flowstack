@@ -20,7 +20,7 @@ export default function RunHistory() {
     <div className="p-6 sm:p-8 lg:p-12 max-w-5xl mx-auto">
       <div className="mb-8">
         <h1 className="text-2xl font-bold">Run History</h1>
-        <p className="text-muted-foreground text-sm mt-1">A log of all your PDF download runs</p>
+        <p className="text-muted-foreground text-sm mt-1">A log of all your file download runs</p>
       </div>
 
       {loading ? (
@@ -39,7 +39,7 @@ export default function RunHistory() {
             <EmptyState
               icon={HistoryIcon}
               title="No download history yet"
-              description="When you download PDFs, each run will be logged here with stats and links to your Google Drive folders."
+              description="When you download files, each run will be logged here with stats and links to your Google Drive folders."
             />
           </CardContent>
         </Card>

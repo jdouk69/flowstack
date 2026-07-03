@@ -71,7 +71,7 @@ export default function Rules() {
             <EmptyState
               icon={Plus}
               title="No workflows yet"
-              description="Create your first download workflow to automatically save PDF attachments from Gmail to Google Drive."
+              description="Create your first download workflow to automatically save email attachments from Gmail to Google Drive."
               action={<Button onClick={() => navigate('/rules/new')} className="gap-2"><Plus className="h-4 w-4" /> Create Your First Workflow</Button>}
             />
           </CardContent>

@@ -24,6 +24,23 @@
       "type": "string",
       "title": "Search Value"
     },
+    "file_types": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "pdf",
+          "images",
+          "word",
+          "excel",
+          "zip"
+        ]
+      },
+      "default": [
+        "pdf"
+      ],
+      "title": "File Types"
+    },
     "drive_folder_name": {
       "type": "string",
       "title": "Destination Folder"
