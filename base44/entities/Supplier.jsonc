@@ -46,6 +46,10 @@
       "type": "string",
       "title": "Destination Folder"
     },
+    "drive_folder_id": {
+      "type": "string",
+      "title": "Drive Folder ID"
+    },
     "last_run": {
       "type": "string",
       "format": "date-time",

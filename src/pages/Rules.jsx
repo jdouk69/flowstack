@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button';
 import Skeleton from '@/components/Skeleton';
 import EmptyState from '@/components/EmptyState';
 import DownloadFlow from '@/components/DownloadFlow';
-import { Plus, Play, Pencil, Trash2, Folder, Clock } from 'lucide-react';
+import { Plus, Play, Pencil, Trash2, Folder, Clock, FolderOpen } from 'lucide-react';
+import FileBrowser from '@/components/FileBrowser';
 
 const searchTypeLabels = {
   sender_email: 'Sender Email',
@@ -25,6 +26,8 @@ export default function Rules() {
   const [loading, setLoading] = useState(true);
   const [downloadOpen, setDownloadOpen] = useState(false);
   const [downloadSupplierId, setDownloadSupplierId] = useState(null);
+  const [fileBrowserOpen, setFileBrowserOpen] = useState(false);
+  const [fileBrowserSupplierId, setFileBrowserSupplierId] = useState(null);
   const navigate = useNavigate();
 
   const load = async () => {
@@ -45,6 +48,11 @@ export default function Rules() {
   const openDownload = (id) => {
     setDownloadSupplierId(id);
     setDownloadOpen(true);
+  };
+
+  const openFileBrowser = (id) => {
+    setFileBrowserSupplierId(id);
+    setFileBrowserOpen(true);
   };
 
   return (
@@ -119,6 +127,9 @@ export default function Rules() {
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   </div>
+                  <Button size="sm" variant="secondary" className="w-full gap-2 mt-2" onClick={() => openFileBrowser(s.id)}>
+                    <FolderOpen className="h-3.5 w-3.5" /> View Files
+                  </Button>
                 </CardContent>
               </Card>
             );
@@ -132,6 +143,12 @@ export default function Rules() {
         supplierId={downloadSupplierId}
         suppliers={suppliers}
         onComplete={load}
+      />
+
+      <FileBrowser
+        open={fileBrowserOpen}
+        onClose={() => { setFileBrowserOpen(false); setFileBrowserSupplierId(null); }}
+        supplierId={fileBrowserSupplierId}
       />
     </div>
   );
