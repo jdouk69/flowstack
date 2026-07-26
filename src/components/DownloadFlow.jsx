@@ -1,52 +1,139 @@
 import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
-import { Check, X, Download, FolderOpen, AlertCircle, Merge } from 'lucide-react';
+import { X, Download, FolderOpen, AlertCircle, Merge, AlertTriangle, WifiOff, History } from 'lucide-react';
 
 export default function DownloadFlow({ open, onClose, supplierId, suppliers = [], onComplete }) {
+  const navigate = useNavigate();
   const [phase, setPhase] = useState('idle');
   const [result, setResult] = useState(null);
   const [mergeResult, setMergeResult] = useState(null);
   const [error, setError] = useState(null);
   const [supplierName, setSupplierName] = useState('');
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const abortRef = useRef(false);
+  const confirmDialogRef = useRef(null);
+  const keepWaitingRef = useRef(null);
 
+  const isActive = phase === 'connecting' || phase === 'searching' || phase === 'merging';
+  const isDownloadActive = phase === 'connecting' || phase === 'searching';
+
+  // Initialize to confirmation screen when opened
   useEffect(() => {
     if (open && supplierId) {
       abortRef.current = false;
-      setPhase('connecting');
+      setPhase('confirm');
       setResult(null);
       setMergeResult(null);
       setError(null);
-
+      setShowLeaveConfirm(false);
       const supplier = suppliers.find(s => s.id === supplierId);
       setSupplierName(supplier?.name || 'All Suppliers');
-
-      const timer = setTimeout(() => {
-        if (!abortRef.current) setPhase('searching');
-      }, 800);
-
-      (async () => {
-        try {
-          const res = await base44.functions.invoke('downloadPdfs', { supplier_id: supplierId });
-          clearTimeout(timer);
-          if (abortRef.current) return;
-          setResult(res.data);
-          setPhase('complete');
-          if (onComplete) onComplete();
-        } catch (e) {
-          clearTimeout(timer);
-          if (abortRef.current) return;
-          setError(e.response?.data?.error || e.message || 'Something went wrong');
-          setPhase('error');
-        }
-      })();
     }
   }, [open, supplierId]);
 
-  const handleCancel = () => {
+  const startDownload = () => {
+    setPhase('connecting');
+    const timer = setTimeout(() => {
+      if (!abortRef.current) setPhase('searching');
+    }, 800);
+
+    (async () => {
+      try {
+        const res = await base44.functions.invoke('downloadPdfs', { supplier_id: supplierId });
+        clearTimeout(timer);
+        if (abortRef.current) return;
+        setResult(res.data);
+        setPhase('complete');
+        if (onComplete) onComplete();
+      } catch (e) {
+        clearTimeout(timer);
+        if (abortRef.current) return;
+        const isNetwork = !e.response || (e.message && e.message.includes('Network Error'));
+        if (isNetwork) {
+          setPhase('network_error');
+        } else {
+          setError(e.response?.data?.error || e.message || 'Something went wrong');
+          setPhase('error');
+        }
+      }
+    })();
+  };
+
+  // beforeunload + popstate guard during active download
+  useEffect(() => {
+    if (!isDownloadActive) return;
+
+    const beforeUnloadHandler = (e) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    const popStateHandler = () => {
+      setShowLeaveConfirm(true);
+      window.history.pushState(null, '', window.location.href);
+    };
+
+    window.addEventListener('beforeunload', beforeUnloadHandler);
+    window.addEventListener('popstate', popStateHandler);
+    window.history.pushState(null, '', window.location.href);
+
+    return () => {
+      window.removeEventListener('beforeunload', beforeUnloadHandler);
+      window.removeEventListener('popstate', popStateHandler);
+    };
+  }, [isDownloadActive]);
+
+  // Focus trap for leave confirmation dialog
+  useEffect(() => {
+    if (!showLeaveConfirm) return;
+
+    const focusTimer = setTimeout(() => {
+      keepWaitingRef.current?.focus();
+    }, 50);
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setShowLeaveConfirm(false);
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      const container = confirmDialogRef.current;
+      if (!container) return;
+      const focusable = container.querySelectorAll('button, a, [tabindex]:not([tabindex="-1"])');
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      clearTimeout(focusTimer);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [showLeaveConfirm]);
+
+  const handleAttemptClose = () => {
+    if (isActive) {
+      setShowLeaveConfirm(true);
+    } else {
+      setPhase('idle');
+      onClose();
+    }
+  };
+
+  const handleLeaveAnyway = () => {
     abortRef.current = true;
+    setShowLeaveConfirm(false);
     setPhase('idle');
     onClose();
   };
@@ -71,9 +158,13 @@ export default function DownloadFlow({ open, onClose, supplierId, suppliers = []
     onClose();
   };
 
+  const handleOpenRunHistory = () => {
+    handleClose();
+    navigate('/run-history');
+  };
+
   const totals = result?.totals;
   const results = result?.results || [];
-  const isActive = phase === 'connecting' || phase === 'searching' || phase === 'merging';
 
   return (
     <AnimatePresence>
@@ -83,24 +174,51 @@ export default function DownloadFlow({ open, onClose, supplierId, suppliers = []
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
-          onClick={(e) => { if (e.target === e.currentTarget && !isActive) handleClose(); }}
+          onClick={(e) => { if (e.target === e.currentTarget) handleAttemptClose(); }}
         >
           <motion.div
             initial={{ scale: 0.95, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.95, opacity: 0 }}
             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            className="bg-background rounded-2xl shadow-2xl w-full max-w-lg p-8 relative"
+            className="bg-background rounded-2xl shadow-2xl w-full max-w-lg p-8 relative overflow-hidden"
             role="dialog"
             aria-modal="true"
           >
-            {!isActive && (
-              <button onClick={handleClose} className="absolute top-4 right-4 text-muted-foreground hover:text-foreground transition-colors" aria-label="Close">
+            {(phase === 'confirm' || !isActive) && (
+              <button onClick={handleAttemptClose} className="absolute top-4 right-4 text-muted-foreground hover:text-foreground transition-colors z-20" aria-label="Close">
                 <X className="h-5 w-5" />
               </button>
             )}
 
             <AnimatePresence mode="wait">
+              {/* Confirmation / warning screen */}
+              {phase === 'confirm' && (
+                <motion.div key="confirm" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="text-center py-2">
+                  <div className="w-16 h-16 mx-auto mb-5 rounded-full bg-primary/10 flex items-center justify-center">
+                    <Download className="h-8 w-8 text-primary" />
+                  </div>
+                  <h3 className="text-xl font-bold mb-1">Ready to download</h3>
+                  <p className="text-sm text-muted-foreground mb-5">{supplierName}</p>
+
+                  <div role="alert" className="flex gap-3 p-4 mb-6 rounded-xl bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 text-left">
+                    <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">Keep InboxVault open until the download finishes.</p>
+                      <p className="text-xs text-amber-700 dark:text-amber-400 mt-1.5">Closing the app, refreshing the page, locking your phone, or leaving the browser for too long may interrupt the connection. The backend may continue processing, but InboxVault may no longer be able to show the final result.</p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    <Button className="gap-2" onClick={startDownload}>
+                      <Download className="h-4 w-4" /> Start Download
+                    </Button>
+                    <Button variant="ghost" onClick={handleAttemptClose}>Cancel</Button>
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Active download / merge progress */}
               {isActive && (
                 <motion.div key="progress" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="text-center py-4">
                   <div className="relative w-20 h-20 mx-auto mb-6">
@@ -123,19 +241,32 @@ export default function DownloadFlow({ open, onClose, supplierId, suppliers = []
                     {phase === 'searching' && supplierName}
                     {phase === 'merging' && 'Combining all PDFs into one file'}
                   </p>
-                  <div className="h-1.5 bg-muted rounded-full overflow-hidden mb-6 relative">
+                  <div className="h-1.5 bg-muted rounded-full overflow-hidden mb-4 relative">
                     <motion.div
                       animate={{ left: ['-33%', '100%'] }}
                       transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
                       className="absolute h-full w-1/3 bg-primary rounded-full"
                     />
                   </div>
-                  <Button variant="ghost" size="sm" onClick={handleCancel} className="text-muted-foreground">
+
+                  {isDownloadActive && (
+                    <div role="status" aria-live="polite" className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 mb-4">
+                      <p className="text-xs text-amber-700 dark:text-amber-400 font-medium">
+                        Please keep this screen open and your device unlocked until the download completes.
+                      </p>
+                      <p className="text-xs text-amber-600 dark:text-amber-500 mt-1.5 sm:hidden">
+                        For best results, do not switch apps while the download is running.
+                      </p>
+                    </div>
+                  )}
+
+                  <Button variant="ghost" size="sm" onClick={handleAttemptClose} className="text-muted-foreground">
                     Cancel
                   </Button>
                 </motion.div>
               )}
 
+              {/* Download complete */}
               {phase === 'complete' && totals && (
                 <motion.div key="complete" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="text-center py-4">
                   <motion.div
@@ -203,6 +334,7 @@ export default function DownloadFlow({ open, onClose, supplierId, suppliers = []
                 </motion.div>
               )}
 
+              {/* Merge complete */}
               {phase === 'merge_complete' && mergeResult && (
                 <motion.div key="merge_complete" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="text-center py-4">
                   <motion.div
@@ -234,6 +366,7 @@ export default function DownloadFlow({ open, onClose, supplierId, suppliers = []
                 </motion.div>
               )}
 
+              {/* Generic error */}
               {phase === 'error' && (
                 <motion.div key="error" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-4">
                   <div className="w-16 h-16 mx-auto mb-5 rounded-full bg-red-100 dark:bg-red-950 flex items-center justify-center">
@@ -242,6 +375,55 @@ export default function DownloadFlow({ open, onClose, supplierId, suppliers = []
                   <h3 className="text-xl font-bold mb-1">Something went wrong</h3>
                   <p className="text-sm text-muted-foreground mb-6">{error}</p>
                   <Button variant="ghost" onClick={handleClose}>Close</Button>
+                </motion.div>
+              )}
+
+              {/* Network error / connection lost */}
+              {phase === 'network_error' && (
+                <motion.div key="network_error" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="text-center py-4">
+                  <div className="w-16 h-16 mx-auto mb-5 rounded-full bg-amber-100 dark:bg-amber-950 flex items-center justify-center">
+                    <WifiOff className="h-8 w-8 text-amber-600 dark:text-amber-400" />
+                  </div>
+                  <h3 className="text-xl font-bold mb-1">Connection lost</h3>
+                  <p className="text-sm text-muted-foreground mb-6 px-2">
+                    InboxVault lost its connection while the download was running. Your files may still be processing in the background. Check the Google Drive folder and Run History after a few moments.
+                  </p>
+                  <div className="flex flex-col gap-2">
+                    <Button className="gap-2" onClick={handleOpenRunHistory}>
+                      <History className="h-4 w-4" /> Open Run History
+                    </Button>
+                    <Button variant="ghost" onClick={handleClose}>Close</Button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Leave confirmation overlay */}
+            <AnimatePresence>
+              {showLeaveConfirm && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="absolute inset-0 z-30 bg-background rounded-2xl flex items-center justify-center p-6"
+                  role="alertdialog"
+                  aria-modal="true"
+                  aria-labelledby="leave-title"
+                  aria-describedby="leave-desc"
+                >
+                  <div ref={confirmDialogRef} className="text-center w-full">
+                    <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-amber-100 dark:bg-amber-950 flex items-center justify-center">
+                      <AlertTriangle className="h-7 w-7 text-amber-600 dark:text-amber-400" />
+                    </div>
+                    <h3 id="leave-title" className="text-lg font-bold mb-2">Download still in progress</h3>
+                    <p id="leave-desc" className="text-sm text-muted-foreground mb-6">
+                      Leaving now may cause InboxVault to lose its connection to the download. The files may continue saving to Google Drive, but the app may not be able to show the final status.
+                    </p>
+                    <div className="flex flex-col gap-2">
+                      <Button ref={keepWaitingRef} onClick={() => setShowLeaveConfirm(false)}>Keep Waiting</Button>
+                      <Button variant="destructive" onClick={handleLeaveAnyway}>Leave Anyway</Button>
+                    </div>
+                  </div>
                 </motion.div>
               )}
             </AnimatePresence>
