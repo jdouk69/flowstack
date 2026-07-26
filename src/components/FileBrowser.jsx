@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/components/ui/use-toast';
 import Skeleton from '@/components/Skeleton';
 import EmptyState from '@/components/EmptyState';
-import { X, Search, FileText, Image as ImageIcon, File, ExternalLink, Merge, AlertCircle, FolderOpen, Loader2, CheckCircle2, HardDrive, RefreshCw } from 'lucide-react';
+import { X, Search, FileText, Image as ImageIcon, File, ExternalLink, Merge, AlertCircle, FolderOpen, Loader2, CheckCircle2, HardDrive, RefreshCw, AlertTriangle } from 'lucide-react';
 
 const FILE_TYPE_CATEGORIES = [
   { value: 'all', label: 'All Files' },
@@ -238,6 +238,20 @@ export default function FileBrowser({ open, onClose, supplierId }) {
               </div>
             )}
 
+            {/* Merge warning */}
+            {merging && (
+              <div className="px-5 pb-3 shrink-0">
+                <div role="alert" className="flex gap-3 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800">
+                  <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-xs text-amber-700 dark:text-amber-400 font-medium">Keep InboxVault open until the merge finishes.</p>
+                    <p className="text-xs text-amber-600 dark:text-amber-500 mt-1">Closing the app or leaving this screen may interrupt the merge. Please keep this page open and your device unlocked.</p>
+                    <p className="text-xs text-amber-600 dark:text-amber-500 mt-1 sm:hidden">For best results, do not switch apps while the merge is running.</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Merge success */}
             {mergeResult && (
               <div className="mx-5 mb-3 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 flex items-center gap-3 shrink-0">
@@ -246,11 +260,14 @@ export default function FileBrowser({ open, onClose, supplierId }) {
                   <p className="text-sm font-medium text-emerald-800 dark:text-emerald-300">Merge complete</p>
                   <p className="text-xs text-emerald-700 dark:text-emerald-400 truncate">{mergeResult.merged_filename} ({mergeResult.pdf_count} PDFs)</p>
                 </div>
-                <Button size="sm" variant="outline" asChild className="shrink-0">
-                  <a href={mergeResult.drive_folder_link} target="_blank" rel="noopener noreferrer">
-                    <ExternalLink className="h-3.5 w-3.5" /> Open
-                  </a>
-                </Button>
+                <div className="flex gap-2 shrink-0">
+                  <Button size="sm" variant="outline" asChild>
+                    <a href={mergeResult.drive_folder_link} target="_blank" rel="noopener noreferrer">
+                      <ExternalLink className="h-3.5 w-3.5" /> Open
+                    </a>
+                  </Button>
+                  <Button size="sm" onClick={handleClose}>Done</Button>
+                </div>
               </div>
             )}
 
