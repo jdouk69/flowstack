@@ -56,6 +56,7 @@ export default function RunHistory() {
                     <th className="text-center p-4 font-medium text-muted-foreground">Emails</th>
                     <th className="text-center p-4 font-medium text-muted-foreground">Saved</th>
                     <th className="text-center p-4 font-medium text-muted-foreground">Duplicates</th>
+                    <th className="text-center p-4 font-medium text-muted-foreground">Collisions</th>
                     <th className="text-center p-4 font-medium text-muted-foreground">Errors</th>
                     <th className="text-center p-4 font-medium text-muted-foreground">Folder</th>
                   </tr>
@@ -75,7 +76,10 @@ export default function RunHistory() {
                           {run.pdfs_saved}
                         </span>
                       </td>
-                      <td className="p-4 text-center text-amber-600">{run.duplicates_skipped}</td>
+                      <td className="p-4 text-center text-amber-600">{run.identical_content_skipped ?? run.duplicates_skipped}</td>
+                      <td className="p-4 text-center">
+                        {(run.name_collision_saved || 0) > 0 ? <span className="text-blue-600">{run.name_collision_saved}</span> : '—'}
+                      </td>
                       <td className="p-4 text-center">
                         {run.errors > 0 ? <span className="text-red-600 inline-flex items-center gap-1"><AlertCircle className="h-3.5 w-3.5" />{run.errors}</span> : '—'}
                       </td>
@@ -100,10 +104,11 @@ export default function RunHistory() {
                     <span className="font-medium">{run.supplier_name}</span>
                     <span className="text-xs text-muted-foreground">{new Date(run.run_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
                   </div>
-                  <div className="grid grid-cols-4 gap-2 text-center text-xs">
+                  <div className="grid grid-cols-5 gap-2 text-center text-xs">
                     <div><div className="text-muted-foreground">Emails</div><div className="font-semibold">{run.emails_found}</div></div>
                     <div><div className="text-muted-foreground">Saved</div><div className="font-semibold text-emerald-600">{run.pdfs_saved}</div></div>
-                    <div><div className="text-muted-foreground">Dupes</div><div className="font-semibold text-amber-600">{run.duplicates_skipped}</div></div>
+                    <div><div className="text-muted-foreground">Dupes</div><div className="font-semibold text-amber-600">{run.identical_content_skipped ?? run.duplicates_skipped}</div></div>
+                    <div><div className="text-muted-foreground">Coll.</div><div className="font-semibold text-blue-600">{run.name_collision_saved || 0}</div></div>
                     <div><div className="text-muted-foreground">Errors</div><div className="font-semibold text-red-600">{run.errors}</div></div>
                   </div>
                   {run.drive_folder_link && (

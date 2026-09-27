@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import { resolveWorkflowFolder, FolderResolutionError } from '../../shared/resolveWorkflowFolder.ts';
+import { computeMd5, decideAttachment, buildSourceDateMetadata } from '../../shared/contentDedupe.ts';
 
 function base64UrlToUint8Array(base64url) {
   const base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
@@ -59,19 +60,21 @@ function extractAttachments(payload, allowedExtensions) {
 }
 
 
+// Existing files with checksums, across ALL pages of the Drive listing.
+// A listing failure is an error (fatal) — never assume there are no duplicates.
 async function listExistingFiles(driveAuth, folderId) {
-  const names = new Set();
+  const files = [];
   let pageToken = null;
   do {
-    let url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(`'${folderId}' in parents and trashed=false`)}&fields=files(name,id),nextPageToken&pageSize=200`;
+    let url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(`'${folderId}' in parents and trashed=false`)}&fields=files(name,md5Checksum),nextPageToken&pageSize=200`;
     if (pageToken) url += `&pageToken=${pageToken}`;
     const res = await fetch(url, { headers: driveAuth });
     if (!res.ok) throw new FolderResolutionError('FOLDER_LISTING_FAILED', `Could not list the destination folder's existing files (HTTP ${res.status}). The workflow was stopped to avoid creating duplicate files.`);
     const data = await res.json();
-    (data.files || []).forEach(f => names.add(f.name));
+    (data.files || []).forEach(f => files.push({ name: f.name, md5: f.md5Checksum || null }));
     pageToken = data.nextPageToken;
   } while (pageToken);
-  return names;
+  return files;
 }
 
 async function searchGmail(gmailAuth, query) {
@@ -104,8 +107,7 @@ async function getAttachment(gmailAuth, messageId, attachmentId) {
   return data.data;
 }
 
-async function uploadFileToDrive(driveAuth, filename, folderId, fileBytes, mimeType) {
-  const metadata = { name: filename, parents: [folderId] };
+async function uploadFileToDrive(driveAuth, metadata, fileBytes, mimeType) {
   const boundary = '-------314159265358979323846';
   const delimiter = `--${boundary}\r\n`;
   const closeDelimiter = `\r\n--${boundary}--`;
@@ -117,12 +119,12 @@ async function uploadFileToDrive(driveAuth, filename, folderId, fileBytes, mimeT
     closeDelimiter
   ], { type: `multipart/related; boundary=${boundary}` });
 
-  const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+  const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,md5Checksum', {
     method: 'POST',
     headers: { ...driveAuth, 'Content-Type': `multipart/related; boundary=${boundary}` },
     body
   });
-  if (!res.ok) throw new Error('Failed to upload: ' + filename);
+  if (!res.ok) throw new Error('Failed to upload: ' + metadata.name);
   return await res.json();
 }
 
@@ -131,6 +133,9 @@ async function processSupplier(supplier, gmailAuth, driveAuth, base44) {
     supplier_name: supplier.name,
     emails_found: 0,
     pdfs_saved: 0,
+    identical_content_skipped: 0,
+    name_collision_saved: 0,
+    // Back-compat alias for older UI: filename-based skip -> identical-content skip
     duplicates_skipped: 0,
     errors: 0,
     drive_folder_link: '',
@@ -169,21 +174,45 @@ async function processSupplier(supplier, gmailAuth, driveAuth, base44) {
       try {
         const message = await getMessage(gmailAuth, messageId);
         if (!message) { result.errors++; continue; }
+        const internalDateMs = message.internalDate || null;
 
         const attachments = extractAttachments(message.payload, allowedExtensions);
         for (const att of attachments) {
           try {
-            if (existingFiles.has(att.filename)) {
-              result.duplicates_skipped++;
-              continue;
-            }
+            // Fetch bytes first: content-based dedupe requires the checksum
             const attachmentData = await getAttachment(gmailAuth, messageId, att.attachmentId);
             if (!attachmentData) { result.errors++; continue; }
 
             const fileBytes = base64UrlToUint8Array(attachmentData);
-            await uploadFileToDrive(driveAuth, att.filename, folderId, fileBytes, att.mimeType);
-            existingFiles.add(att.filename);
+            const md5 = computeMd5(fileBytes);
+            const decision = decideAttachment(att.filename, md5, existingFiles);
+
+            if (decision.action === 'skip_identical') {
+              result.identical_content_skipped++;
+              continue;
+            }
+
+            const dateMeta = buildSourceDateMetadata({
+              isPdf: getExtension(att.filename) === 'pdf',
+              fileBytes,
+              internalDateMs
+            });
+
+            const metadata = {
+              name: decision.finalName,
+              parents: [folderId]
+            };
+            if (dateMeta.description) metadata.description = dateMeta.description;
+            if (Object.keys(dateMeta.appProperties).length > 0) metadata.appProperties = dateMeta.appProperties;
+            if (dateMeta.createdTime) {
+              metadata.createdTime = dateMeta.createdTime;
+              metadata.modifiedTime = dateMeta.modifiedTime;
+            }
+
+            await uploadFileToDrive(driveAuth, metadata, fileBytes, att.mimeType);
+            existingFiles.push({ name: decision.finalName, md5 });
             result.pdfs_saved++;
+            if (decision.action === 'save_collision') result.name_collision_saved++;
           } catch (attErr) {
             result.errors++;
             result.error_details.push(`${att.filename}: ${attErr.message}`);
@@ -200,6 +229,7 @@ async function processSupplier(supplier, gmailAuth, driveAuth, base44) {
     result.error_details.push(`Supplier error: ${err.message}`);
   }
 
+  result.duplicates_skipped = result.identical_content_skipped;
   return result;
 }
 
@@ -239,6 +269,8 @@ Deno.serve(async (req) => {
           supplier_name: supplier.name,
           emails_found: 0,
           pdfs_saved: 0,
+          identical_content_skipped: 0,
+          name_collision_saved: 0,
           duplicates_skipped: 0,
           errors: 1,
           drive_folder_link: '',
@@ -255,6 +287,8 @@ Deno.serve(async (req) => {
         emails_found: result.emails_found,
         pdfs_saved: result.pdfs_saved,
         duplicates_skipped: result.duplicates_skipped,
+        identical_content_skipped: result.identical_content_skipped,
+        name_collision_saved: result.name_collision_saved,
         errors: result.errors,
         drive_folder_link: result.drive_folder_link,
         status: result.fatal ? 'failed' : (result.errors > 0 ? 'partial' : 'completed'),
@@ -271,8 +305,10 @@ Deno.serve(async (req) => {
       emails_found: acc.emails_found + r.emails_found,
       pdfs_saved: acc.pdfs_saved + r.pdfs_saved,
       duplicates_skipped: acc.duplicates_skipped + r.duplicates_skipped,
+      identical_content_skipped: acc.identical_content_skipped + r.identical_content_skipped,
+      name_collision_saved: acc.name_collision_saved + r.name_collision_saved,
       errors: acc.errors + r.errors,
-    }), { emails_found: 0, pdfs_saved: 0, duplicates_skipped: 0, errors: 0 });
+    }), { emails_found: 0, pdfs_saved: 0, duplicates_skipped: 0, identical_content_skipped: 0, name_collision_saved: 0, errors: 0 });
 
     return Response.json({ results: allResults, totals });
   } catch (error) {

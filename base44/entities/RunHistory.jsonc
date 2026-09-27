@@ -30,6 +30,16 @@
       "title": "Duplicates Skipped",
       "default": 0
     },
+    "identical_content_skipped": {
+      "type": "number",
+      "title": "Identical Content Skipped",
+      "default": 0
+    },
+    "name_collision_saved": {
+      "type": "number",
+      "title": "Name Collision Saved",
+      "default": 0
+    },
     "errors": {
       "type": "number",
       "title": "Errors",

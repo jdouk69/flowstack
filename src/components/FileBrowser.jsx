@@ -323,8 +323,27 @@ export default function FileBrowser({ open, onClose, supplierId }) {
                         <p className="text-sm font-medium truncate">{file.name}</p>
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground mt-0.5">
                           <span>{formatSize(file.size)}</span>
-                          <span className="hidden sm:inline">·</span>
-                          <span>{formatDate(file.modified_date)}</span>
+                          {file.source_dates?.email_received || file.source_dates?.pdf_creation_date ? (
+                            <>
+                              {file.source_dates.email_received && (
+                                <>
+                                  <span className="hidden sm:inline">·</span>
+                                  <span>Email received: {formatDate(file.source_dates.email_received)}</span>
+                                </>
+                              )}
+                              {file.source_dates.pdf_creation_date && (
+                                <>
+                                  <span className="hidden sm:inline">·</span>
+                                  <span>PDF metadata creation date: {formatDate(file.source_dates.pdf_creation_date)}</span>
+                                </>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              <span className="hidden sm:inline">·</span>
+                              <span>{formatDate(file.modified_date)}</span>
+                            </>
+                          )}
                         </div>
                       </div>
                       <Button size="sm" variant="ghost" asChild className="shrink-0">

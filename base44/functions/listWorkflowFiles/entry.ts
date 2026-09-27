@@ -4,7 +4,7 @@ import { resolveWorkflowFolder, FolderResolutionError } from '../../shared/resol
 async function listFilesInFolder(driveAuth, folderId) {
   const files = [];
   let pageToken = null;
-  const fields = 'files(id,name,mimeType,size,createdTime,modifiedTime,webViewLink),nextPageToken';
+  const fields = 'files(id,name,mimeType,size,createdTime,modifiedTime,webViewLink,appProperties),nextPageToken';
   do {
     let url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(`'${folderId}' in parents and trashed=false`)}&fields=${encodeURIComponent(fields)}&pageSize=200&orderBy=name`;
     if (pageToken) url += `&pageToken=${pageToken}`;
@@ -58,6 +58,10 @@ Deno.serve(async (req) => {
       created_date: f.createdTime || null,
       modified_date: f.modifiedTime || null,
       web_view_link: f.webViewLink,
+      source_dates: {
+        email_received: f.appProperties?.source_email_received || null,
+        pdf_creation_date: f.appProperties?.source_pdf_creation || null
+      },
       is_pdf: f.mimeType === 'application/pdf'
     }));
 

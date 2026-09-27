@@ -294,13 +294,19 @@ export default function DownloadFlow({ open, onClose, supplierId, suppliers = []
                     </div>
                     <div className="p-3 rounded-xl bg-muted/50">
                       <p className="text-2xl font-bold text-amber-600">{totals.duplicates_skipped}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">Duplicates</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Identical Skipped</p>
                     </div>
                     <div className="p-3 rounded-xl bg-muted/50">
                       <p className="text-2xl font-bold text-blue-600">{totals.emails_found}</p>
                       <p className="text-xs text-muted-foreground mt-0.5">Emails Found</p>
                     </div>
                   </div>
+
+                  {totals.name_collision_saved > 0 && (
+                    <p className="text-xs text-amber-600 dark:text-amber-400 -mt-3 mb-6">
+                      {totals.name_collision_saved} same-name file{totals.name_collision_saved > 1 ? 's' : ''} saved with an [alt-…] suffix — same name, different content. Both files were kept.
+                    </p>
+                  )}
 
                   {results.length > 1 && (
                     <div className="space-y-1 mb-5 text-left">
