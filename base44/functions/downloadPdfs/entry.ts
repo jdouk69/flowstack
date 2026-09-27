@@ -206,7 +206,6 @@ async function processSupplier(supplier, gmailAuth, driveAuth, base44) {
             if (Object.keys(dateMeta.appProperties).length > 0) metadata.appProperties = dateMeta.appProperties;
             if (dateMeta.createdTime) {
               metadata.createdTime = dateMeta.createdTime;
-              metadata.modifiedTime = dateMeta.modifiedTime;
             }
 
             await uploadFileToDrive(driveAuth, metadata, fileBytes, att.mimeType);

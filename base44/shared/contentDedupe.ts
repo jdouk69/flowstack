@@ -171,9 +171,15 @@ export function hasTimezone(dateStr: string): boolean {
  * - "PDF metadata creation date": the PDF's embedded /CreationDate, when present
  *   and parseable. Not assumed to prove when the document was actually made.
  * Stored in Drive appProperties (app-retrievable) and in the Drive description
- * (visible in Drive). Drive createdTime/modifiedTime are set ONLY from a
- * timezone-complete date (PDF date with offset, else email received); a no-offset
- * PDF date is recorded as metadata only and never drives a Drive timestamp.
+ * (visible in Drive).
+ *
+ * Drive timestamp rule: createdTime is set ONLY when the PDF's embedded creation
+ * date is parseable AND carries a timezone. An email receipt date is never used —
+ * it is not the attachment's creation or modification date. When no usable PDF
+ * date exists, no Drive timestamps are set and Drive assigns its normal upload
+ * timestamps. modifiedTime is never set: the file provides no separate, reliable
+ * modification date. "PDF metadata creation date" stays clearly labeled as PDF
+ * metadata, not a verified real-world creation date.
  */
 export function buildSourceDateMetadata({ isPdf, fileBytes, internalDateMs }: { isPdf: boolean; fileBytes: Uint8Array; internalDateMs: string | null }): {
   appProperties: Record<string, string>;
@@ -193,8 +199,6 @@ export function buildSourceDateMetadata({ isPdf, fileBytes, internalDateMs }: { 
     appProperties.source_pdf_creation = pdfDate;
     parts.push(`PDF metadata creation date: ${pdfDate}`);
   }
-  let ts: string | null = null;
-  if (pdfDate && hasTimezone(pdfDate)) ts = pdfDate;
-  else if (emailIso) ts = emailIso;
-  return { appProperties, description: parts.join(' | '), createdTime: ts, modifiedTime: ts };
+  const createdTime = pdfDate && hasTimezone(pdfDate) ? pdfDate : null;
+  return { appProperties, description: parts.join(' | '), createdTime, modifiedTime: null };
 }

@@ -51,17 +51,23 @@ Deno.serve(async () => {
   check('collision without extension handled', noExt.action === 'save_collision' && noExt.finalName.startsWith('README [alt-'));
 
   // --- Source date metadata ---
+  // emailIso = 2026-01-01T00:00:00Z; the PDF dates below are 2026-01-15 — the two differ.
   const emailIso = new Date(1767225600000).toISOString();
+
+  // Case: PDF date with timezone, email received differs from it
   const m1 = buildSourceDateMetadata({ isPdf: true, fileBytes: pdf("D:20260115093000+02'00"), internalDateMs: '1767225600000' });
   check('description carries both labels', m1.description.includes('Email received:') && m1.description.includes('PDF metadata creation date:'), { got: m1.description });
   check('appProperties carry both dates', m1.appProperties.source_email_received === emailIso && m1.appProperties.source_pdf_creation === '2026-01-15T09:30:00+02:00');
-  check('drive timestamps from tz-complete pdf date', m1.createdTime === '2026-01-15T09:30:00+02:00' && m1.modifiedTime === m1.createdTime);
+  check('tz-complete pdf date drives createdTime (email date differs and does NOT)', m1.createdTime === '2026-01-15T09:30:00+02:00' && m1.createdTime !== emailIso);
+  check('modifiedTime never set (no separate reliable modification date)', m1.modifiedTime === null);
 
+  // Case: PDF date without a timezone
   const m2 = buildSourceDateMetadata({ isPdf: true, fileBytes: pdf('D:20260115093000'), internalDateMs: '1767225600000' });
-  check('no-tz pdf date recorded but NOT used as drive timestamp', m2.appProperties.source_pdf_creation === '2026-01-15T09:30:00' && m2.createdTime === emailIso, { got: m2 });
+  check('no-tz pdf date recorded as label only, NO drive timestamps', m2.appProperties.source_pdf_creation === '2026-01-15T09:30:00' && m2.createdTime === null && m2.modifiedTime === null, { got: m2 });
 
+  // Case: PDF with no creation date at all, email received present
   const m3 = buildSourceDateMetadata({ isPdf: true, fileBytes: enc('%PDF-1.4 no date'), internalDateMs: '1767225600000' });
-  check('missing pdf date -> email received drives timestamp, no pdf label', m3.createdTime === emailIso && !m3.description.includes('PDF metadata'));
+  check('pdf with no creation date -> NO drive timestamps, email label only', m3.createdTime === null && m3.modifiedTime === null && m3.description.includes('Email received:') && !m3.description.includes('PDF metadata'));
 
   const m4 = buildSourceDateMetadata({ isPdf: false, fileBytes: enc('x'), internalDateMs: null });
   check('no dates at all -> no timestamps, no labels', m4.createdTime === null && m4.description === '' && Object.keys(m4.appProperties).length === 0);
