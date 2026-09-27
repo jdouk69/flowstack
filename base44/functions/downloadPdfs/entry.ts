@@ -1,8 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
-
-function escapeDriveQuery(str) {
-  return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-}
+import { resolveWorkflowFolder, FolderResolutionError } from '../../shared/resolveWorkflowFolder.ts';
 
 function base64UrlToUint8Array(base64url) {
   const base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
@@ -61,21 +58,6 @@ function extractAttachments(payload, allowedExtensions) {
   return attachments;
 }
 
-async function findOrCreateFolder(driveAuth, folderName) {
-  const query = `name='${escapeDriveQuery(folderName)}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-  const searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}`, { headers: driveAuth });
-  if (searchRes.ok) {
-    const searchData = await searchRes.json();
-    if (searchData.files && searchData.files.length > 0) return searchData.files[0];
-  }
-  const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
-    method: 'POST',
-    headers: { ...driveAuth, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: folderName, mimeType: 'application/vnd.google-apps.folder' })
-  });
-  if (!createRes.ok) throw new Error('Failed to create Drive folder: ' + folderName);
-  return await createRes.json();
-}
 
 async function listExistingFiles(driveAuth, folderId) {
   const names = new Set();
@@ -84,7 +66,7 @@ async function listExistingFiles(driveAuth, folderId) {
     let url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(`'${folderId}' in parents and trashed=false`)}&fields=files(name,id),nextPageToken&pageSize=200`;
     if (pageToken) url += `&pageToken=${pageToken}`;
     const res = await fetch(url, { headers: driveAuth });
-    if (!res.ok) break;
+    if (!res.ok) throw new FolderResolutionError('FOLDER_LISTING_FAILED', `Could not list the destination folder's existing files (HTTP ${res.status}). The workflow was stopped to avoid creating duplicate files.`);
     const data = await res.json();
     (data.files || []).forEach(f => names.add(f.name));
     pageToken = data.nextPageToken;
@@ -144,7 +126,7 @@ async function uploadFileToDrive(driveAuth, filename, folderId, fileBytes, mimeT
   return await res.json();
 }
 
-async function processSupplier(supplier, gmailAuth, driveAuth) {
+async function processSupplier(supplier, gmailAuth, driveAuth, base44) {
   const result = {
     supplier_name: supplier.name,
     emails_found: 0,
@@ -152,7 +134,8 @@ async function processSupplier(supplier, gmailAuth, driveAuth) {
     duplicates_skipped: 0,
     errors: 0,
     drive_folder_link: '',
-    error_details: []
+    error_details: [],
+    fatal: false
   };
 
   try {
@@ -175,10 +158,11 @@ async function processSupplier(supplier, gmailAuth, driveAuth) {
 
     if (allMessageIds.size === 0) return result;
 
-    const folder = await findOrCreateFolder(driveAuth, supplier.drive_folder_name);
-    result.drive_folder_link = `https://drive.google.com/drive/folders/${folder.id}`;
+    const { folderId, bound } = await resolveWorkflowFolder(driveAuth, base44, supplier, { allowCreate: true });
+    if (bound) await base44.entities.Supplier.update(supplier.id, { drive_folder_id: folderId });
+    result.drive_folder_link = `https://drive.google.com/drive/folders/${folderId}`;
 
-    const existingFiles = await listExistingFiles(driveAuth, folder.id);
+    const existingFiles = await listExistingFiles(driveAuth, folderId);
     const allowedExtensions = getAllowedExtensions(supplier.file_types);
 
     for (const messageId of allMessageIds) {
@@ -197,7 +181,7 @@ async function processSupplier(supplier, gmailAuth, driveAuth) {
             if (!attachmentData) { result.errors++; continue; }
 
             const fileBytes = base64UrlToUint8Array(attachmentData);
-            await uploadFileToDrive(driveAuth, att.filename, folder.id, fileBytes, att.mimeType);
+            await uploadFileToDrive(driveAuth, att.filename, folderId, fileBytes, att.mimeType);
             existingFiles.add(att.filename);
             result.pdfs_saved++;
           } catch (attErr) {
@@ -212,6 +196,7 @@ async function processSupplier(supplier, gmailAuth, driveAuth) {
     }
   } catch (err) {
     result.errors++;
+    result.fatal = err instanceof FolderResolutionError;
     result.error_details.push(`Supplier error: ${err.message}`);
   }
 
@@ -246,7 +231,21 @@ Deno.serve(async (req) => {
     const allResults = [];
 
     for (const supplier of suppliers) {
-      const result = await processSupplier(supplier, gmailAuth, driveAuth);
+      let result;
+      try {
+        result = await processSupplier(supplier, gmailAuth, driveAuth, base44);
+      } catch (fatalErr) {
+        result = {
+          supplier_name: supplier.name,
+          emails_found: 0,
+          pdfs_saved: 0,
+          duplicates_skipped: 0,
+          errors: 1,
+          drive_folder_link: '',
+          error_details: [fatalErr.message],
+          fatal: true
+        };
+      }
       allResults.push(result);
 
       await base44.entities.RunHistory.create({
@@ -258,7 +257,7 @@ Deno.serve(async (req) => {
         duplicates_skipped: result.duplicates_skipped,
         errors: result.errors,
         drive_folder_link: result.drive_folder_link,
-        status: result.errors > 0 ? 'partial' : 'completed',
+        status: result.fatal ? 'failed' : (result.errors > 0 ? 'partial' : 'completed'),
         error_details: result.error_details.join('; ')
       });
 

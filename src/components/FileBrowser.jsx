@@ -87,7 +87,7 @@ export default function FileBrowser({ open, onClose, supplierId }) {
       } else if (!e.response || (e.message && e.message.includes('Network Error'))) {
         setError({ type: 'network', message: 'Network error. Check your connection and try again.' });
       } else {
-        setError({ type: 'generic', message: errData?.error || errData?.message || e.message || 'Something went wrong' });
+        setError({ type: 'generic', message: errData?.message || errData?.error || e.message || 'Something went wrong' });
       }
     }
     setLoading(false);
@@ -112,7 +112,7 @@ export default function FileBrowser({ open, onClose, supplierId }) {
       toast({ title: 'Merge complete', description: `${res.data.merged_filename} created with ${res.data.pdf_count} PDFs` });
       await loadFiles();
     } catch (e) {
-      const msg = e.response?.data?.error || e.message || 'Merge failed';
+      const msg = e.response?.data?.message || e.response?.data?.error || e.message || 'Merge failed';
       setError({ type: 'merge_failed', message: msg });
     }
     setMerging(false);

@@ -1,16 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
-
-function escapeDriveQuery(str) {
-  return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-}
-
-async function findFoldersByName(driveAuth, folderName) {
-  const query = `name='${escapeDriveQuery(folderName)}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}`, { headers: driveAuth });
-  if (!res.ok) throw new Error('Failed to search Google Drive folders');
-  const data = await res.json();
-  return data.files || [];
-}
+import { resolveWorkflowFolder, FolderResolutionError } from '../../shared/resolveWorkflowFolder.ts';
 
 async function listFilesInFolder(driveAuth, folderId) {
   const files = [];
@@ -43,29 +32,20 @@ Deno.serve(async (req) => {
     const driveAuth = { Authorization: `Bearer ${driveToken}` };
 
     const folderName = supplier.drive_folder_name;
-    let folderId = supplier.drive_folder_id;
-
-    // Resolve folder: prefer stored ID, fall back to name lookup
-    if (!folderId) {
-      const folders = await findFoldersByName(driveAuth, folderName);
-      if (folders.length === 0) {
-        return Response.json({
-          error: 'FOLDER_NOT_FOUND',
-          message: `No Google Drive folder named "${folderName}" was found. Run a download first to create it.`,
-          folder_name: folderName
-        }, { status: 404 });
-      }
-      if (folders.length > 1) {
-        return Response.json({
-          error: 'AMBIGUOUS_FOLDER',
-          message: `Multiple Google Drive folders named "${folderName}" were found. Rename one in Drive or update your workflow destination.`,
-          folder_name: folderName,
-          matching_count: folders.length
-        }, { status: 409 });
-      }
-      folderId = folders[0].id;
-      // Persist resolved ID for future lookups
-      await base44.entities.Supplier.update(supplier_id, { drive_folder_id: folderId });
+    let folderId;
+    try {
+      const resolved = await resolveWorkflowFolder(driveAuth, base44, supplier, { allowCreate: false });
+      folderId = resolved.folderId;
+      if (resolved.bound) await base44.entities.Supplier.update(supplier_id, { drive_folder_id: folderId });
+    } catch (err) {
+      const status = err instanceof FolderResolutionError
+        ? (err.code === 'FOLDER_NOT_FOUND' ? 404 : 409)
+        : 500;
+      return Response.json({
+        error: err.code || 'FOLDER_ERROR',
+        message: err.message,
+        ...(err.details || {})
+      }, { status });
     }
 
     const files = await listFilesInFolder(driveAuth, folderId);

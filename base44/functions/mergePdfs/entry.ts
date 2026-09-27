@@ -1,17 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import { PDFDocument } from 'npm:pdf-lib@1.17.1';
-
-function escapeDriveQuery(str) {
-  return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-}
-
-async function findFolder(driveAuth, folderName) {
-  const query = `name='${escapeDriveQuery(folderName)}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}`, { headers: driveAuth });
-  if (!res.ok) return null;
-  const data = await res.json();
-  return (data.files && data.files.length > 0) ? data.files[0] : null;
-}
+import { resolveWorkflowFolder, FolderResolutionError } from '../../shared/resolveWorkflowFolder.ts';
 
 async function listPdfsInFolder(driveAuth, folderId) {
   const pdfs = [];
@@ -20,7 +9,7 @@ async function listPdfsInFolder(driveAuth, folderId) {
     let url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(`'${folderId}' in parents and trashed=false and mimeType='application/pdf'`)}&fields=files(id,name),nextPageToken&pageSize=200&orderBy=name`;
     if (pageToken) url += `&pageToken=${pageToken}`;
     const res = await fetch(url, { headers: driveAuth });
-    if (!res.ok) break;
+    if (!res.ok) throw new Error(`Failed to list PDFs in the Drive folder (HTTP ${res.status}).`);
     const data = await res.json();
     (data.files || []).forEach(f => pdfs.push(f));
     pageToken = data.nextPageToken;
@@ -69,12 +58,19 @@ Deno.serve(async (req) => {
     const { accessToken: driveToken } = await base44.asServiceRole.connectors.getConnection('googledrive');
     const driveAuth = { Authorization: `Bearer ${driveToken}` };
 
-    const folder = await findFolder(driveAuth, supplier.drive_folder_name);
-    if (!folder) {
-      return Response.json({ error: 'Folder not found. Run a download first.' }, { status: 404 });
+    let folderId;
+    try {
+      const resolved = await resolveWorkflowFolder(driveAuth, base44, supplier, { allowCreate: false });
+      folderId = resolved.folderId;
+      if (resolved.bound) await base44.entities.Supplier.update(supplier.id, { drive_folder_id: folderId });
+    } catch (err) {
+      const status = err instanceof FolderResolutionError
+        ? (err.code === 'FOLDER_NOT_FOUND' ? 404 : 409)
+        : 500;
+      return Response.json({ error: err.code || 'FOLDER_ERROR', message: err.message, ...(err.details || {}) }, { status });
     }
 
-    const pdfs = await listPdfsInFolder(driveAuth, folder.id);
+    const pdfs = await listPdfsInFolder(driveAuth, folderId);
     if (pdfs.length === 0) {
       return Response.json({ error: 'No PDFs found in folder' }, { status: 404 });
     }
@@ -106,13 +102,13 @@ Deno.serve(async (req) => {
     const dateStr = new Date().toISOString().slice(0, 10);
     const mergedFilename = `${supplier.name}_merged_${dateStr}.pdf`;
 
-    await uploadFileToDrive(driveAuth, mergedFilename, folder.id, mergedBytes);
+    await uploadFileToDrive(driveAuth, mergedFilename, folderId, mergedBytes);
 
     return Response.json({
       success: true,
       merged_filename: mergedFilename,
       pdf_count: mergedCount,
-      drive_folder_link: `https://drive.google.com/drive/folders/${folder.id}`
+      drive_folder_link: `https://drive.google.com/drive/folders/${folderId}`
     });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
