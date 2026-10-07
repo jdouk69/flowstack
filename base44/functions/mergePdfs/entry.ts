@@ -23,28 +23,6 @@ async function downloadFile(driveAuth, fileId) {
   return new Uint8Array(await res.arrayBuffer());
 }
 
-async function uploadFileToDrive(driveAuth, filename, folderId, data) {
-  const metadata = { name: filename, parents: [folderId] };
-  const boundary = '-------314159265358979323846';
-  const delimiter = `--${boundary}\r\n`;
-  const closeDelimiter = `\r\n--${boundary}--`;
-
-  const body = new Blob([
-    delimiter + 'Content-Type: application/json; charset=UTF-8\r\n\r\n' + JSON.stringify(metadata) + '\r\n',
-    delimiter + 'Content-Type: application/pdf\r\n\r\n',
-    data,
-    closeDelimiter
-  ], { type: `multipart/related; boundary=${boundary}` });
-
-  const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
-    method: 'POST',
-    headers: { ...driveAuth, 'Content-Type': `multipart/related; boundary=${boundary}` },
-    body
-  });
-  if (!res.ok) throw new Error('Failed to upload merged file');
-  return await res.json();
-}
-
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -112,18 +90,23 @@ Deno.serve(async (req) => {
       }
     }
 
-    const mergedPdf = await PDFDocument.create();
+    let mergedPdf = await PDFDocument.create();
     let mergedCount = 0;
     const skipped = [];
     for (const pdf of toMerge) {
+      let pdfBytes = null;
       try {
-        const pdfBytes = await downloadFile(driveAuth, pdf.id);
+        pdfBytes = await downloadFile(driveAuth, pdf.id);
         const doc = await PDFDocument.load(pdfBytes);
         const pages = await mergedPdf.copyPages(doc, doc.getPageIndices());
         pages.forEach(p => mergedPdf.addPage(p));
         mergedCount++;
       } catch (e) {
         skipped.push(pdf.name);
+      } finally {
+        pdfBytes = null;
+        // Yield between files so the runtime can reclaim each PDF's memory before the next download.
+        await new Promise(r => setTimeout(r, 15));
       }
     }
 
@@ -132,6 +115,8 @@ Deno.serve(async (req) => {
     }
 
     const mergedBytes = await mergedPdf.save();
+    mergedPdf = null;
+    await new Promise(r => setTimeout(r, 15));
     const dateStr = typeof body.date_str === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.date_str)
       ? body.date_str
       : new Date().toISOString().slice(0, 10);
@@ -153,8 +138,21 @@ Deno.serve(async (req) => {
       if (!upRes.ok) throw new Error('Failed to update the existing merged file');
       uploadedId = existing[0].id;
     } else {
-      const up = await uploadFileToDrive(driveAuth, mergedFilename, folderId, mergedBytes);
-      uploadedId = up.id;
+      // Two-step upload (metadata, then content) so the final PDF is never duplicated in memory.
+      const metaRes = await fetch('https://www.googleapis.com/drive/v3/files', {
+        method: 'POST',
+        headers: { ...driveAuth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: mergedFilename, parents: [folderId], mimeType: 'application/pdf' })
+      });
+      if (!metaRes.ok) throw new Error('Failed to create the merged file on Drive');
+      const created = await metaRes.json();
+      const upRes = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${created.id}?uploadType=media`, {
+        method: 'PATCH',
+        headers: { ...driveAuth, 'Content-Type': 'application/pdf' },
+        body: mergedBytes
+      });
+      if (!upRes.ok) throw new Error('Failed to upload the merged file');
+      uploadedId = created.id;
     }
 
     // Verify the saved file on Drive before reporting success.
