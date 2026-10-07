@@ -1,0 +1,125 @@
+{
+  "name": "CustomerLink",
+  "type": "object",
+  "properties": {
+    "supplier_id": {
+      "type": "string",
+      "title": "Supplier ID"
+    },
+    "supplier_name": {
+      "type": "string",
+      "title": "Supplier Name"
+    },
+    "source_file_id": {
+      "type": "string",
+      "title": "Source Drive File ID"
+    },
+    "source_name": {
+      "type": "string",
+      "title": "Source File Name"
+    },
+    "source_size": {
+      "type": "number",
+      "title": "Source Size"
+    },
+    "copy_id": {
+      "type": "string",
+      "title": "Customer Copy Drive ID"
+    },
+    "copy_name": {
+      "type": "string",
+      "title": "Customer Copy Name"
+    },
+    "copy_size": {
+      "type": "number",
+      "title": "Customer Copy Size"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "active",
+        "revoked",
+        "incomplete"
+      ],
+      "default": "pending",
+      "title": "Status"
+    },
+    "share_url": {
+      "type": "string",
+      "title": "Share URL"
+    },
+    "download_url": {
+      "type": "string",
+      "title": "Download URL"
+    },
+    "verified": {
+      "type": "boolean",
+      "title": "Verified"
+    },
+    "history": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "event": {
+            "type": "string"
+          },
+          "date": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          }
+        }
+      },
+      "title": "Sharing History"
+    }
+  },
+  "required": [
+    "source_file_id",
+    "source_name",
+    "status"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "create": {
+      "created_by_id": "{{user.id}}"
+    },
+    "update": {
+      "$or": [
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}

@@ -3,15 +3,18 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
-import { X, Download, FolderOpen, AlertCircle, Merge, AlertTriangle, WifiOff, History } from 'lucide-react';
+import { X, Download, FolderOpen, AlertCircle, Merge, AlertTriangle, WifiOff, History, Copy, Link2, ExternalLink, Loader2 } from 'lucide-react';
+import { useToast } from '@/components/ui/use-toast';
 
 export default function DownloadFlow({ open, onClose, supplierId, suppliers = [], onComplete }) {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [phase, setPhase] = useState('idle');
   const [result, setResult] = useState(null);
   const [mergeResult, setMergeResult] = useState(null);
   const [error, setError] = useState(null);
   const [supplierName, setSupplierName] = useState('');
+  const [linkState, setLinkState] = useState(null);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const abortRef = useRef(false);
   const confirmDialogRef = useRef(null);
@@ -27,6 +30,7 @@ export default function DownloadFlow({ open, onClose, supplierId, suppliers = []
       setPhase('confirm');
       setResult(null);
       setMergeResult(null);
+      setLinkState(null);
       setError(null);
       setShowLeaveConfirm(false);
       const supplier = suppliers.find(s => s.id === supplierId);
@@ -144,12 +148,34 @@ export default function DownloadFlow({ open, onClose, supplierId, suppliers = []
     setMergeResult(null);
     setError(null);
     try {
-      const res = await base44.functions.invoke('mergePdfs', { supplier_id: supplierId });
+      const res = await base44.functions.invoke('mergePdfs', { supplier_id: supplierId, date_str: new Date().toLocaleDateString('en-CA') });
       setMergeResult(res.data);
       setPhase('merge_complete');
     } catch (e) {
       setError(e.response?.data?.error || e.message || 'Merge failed');
       setPhase('error');
+    }
+  };
+
+  const createCustomerLink = async () => {
+    if (!mergeResult?.merged_file_id) return;
+    setLinkState({ status: 'working' });
+    try {
+      const res = await base44.functions.invoke('createCustomerLink', { file_id: mergeResult.merged_file_id, supplier_id: supplierId });
+      setLinkState({ status: 'active', data: res.data });
+      toast({ title: 'Customer link created' });
+    } catch (e) {
+      setLinkState({ status: 'failed', message: e.response?.data?.message || e.message || 'Could not create the customer link. The merge is safe — try again.' });
+    }
+  };
+
+  const copyCustomerLink = async () => {
+    if (!linkState?.data?.download_url) return;
+    try {
+      await navigator.clipboard.writeText(linkState.data.download_url);
+      toast({ title: 'Link copied' });
+    } catch (e) {
+      toast({ title: 'Could not copy the link' });
     }
   };
 
@@ -360,13 +386,49 @@ export default function DownloadFlow({ open, onClose, supplierId, suppliers = []
                   </motion.div>
                   <h3 className="text-xl font-bold mb-1">Merge Complete</h3>
                   <p className="text-sm text-muted-foreground mb-2">{mergeResult.pdf_count} PDFs merged into one file</p>
-                  <p className="text-sm font-medium text-primary mb-6">{mergeResult.merged_filename}</p>
+                  <p className="text-sm font-medium text-primary mb-2">{mergeResult.merged_filename}</p>
+                  {linkState?.status === 'failed' && (
+                    <div className="mb-4 w-full p-3 rounded-xl bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 text-left">
+                      <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">Merge succeeded, but the customer link failed.</p>
+                      <p className="text-xs text-amber-600 dark:text-amber-500 mt-1">{linkState.message}</p>
+                    </div>
+                  )}
+                  {linkState?.status === 'active' && (
+                    <p className="text-xs text-emerald-700 dark:text-emerald-400 mb-4 w-full">
+                      Anyone with this link can view and download a separate copy. It never expires automatically — revoke it in Documents.
+                    </p>
+                  )}
                   <div className="flex flex-col gap-2">
-                    <Button className="gap-2" asChild>
-                      <a href={mergeResult.drive_folder_link} target="_blank" rel="noopener noreferrer">
-                        <FolderOpen className="h-4 w-4" /> Open Folder
-                      </a>
-                    </Button>
+                    {linkState?.status === 'active' ? (
+                      <div className="flex gap-2">
+                        <Button className="flex-1 gap-2" onClick={copyCustomerLink}>
+                          <Copy className="h-4 w-4" /> Copy customer link
+                        </Button>
+                        <Button variant="outline" className="flex-1 gap-2" asChild>
+                          <a href={linkState.data.share_url} target="_blank" rel="noopener noreferrer">
+                            <ExternalLink className="h-4 w-4" /> Open copy
+                          </a>
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button className="gap-2" onClick={createCustomerLink} disabled={linkState?.status === 'working' || !mergeResult.merged_file_id}>
+                        {linkState?.status === 'working' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
+                        {linkState?.status === 'working' ? 'Creating link...' : 'Create customer link'}
+                      </Button>
+                    )}
+                    <div className="flex gap-2">
+                      <Button variant="outline" className="flex-1 gap-2" asChild>
+                        <a href={`https://drive.google.com/uc?export=download&id=${mergeResult.merged_file_id}`} target="_blank" rel="noopener noreferrer">
+                          <Download className="h-4 w-4" /> Download PDF
+                        </a>
+                      </Button>
+                      <Button variant="outline" className="flex-1 gap-2" asChild>
+                        <a href={mergeResult.drive_folder_link} target="_blank" rel="noopener noreferrer">
+                          <FolderOpen className="h-4 w-4" /> Open Folder
+                        </a>
+                      </Button>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">Large downloads: Google may show a confirmation page before the file starts.</p>
                     <Button variant="ghost" onClick={handleClose}>Return to Dashboard</Button>
                   </div>
                 </motion.div>

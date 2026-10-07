@@ -8,6 +8,7 @@ import Welcome from '@/pages/Welcome';
 import Rules from '@/pages/Rules';
 import CreateRuleWizard from '@/pages/CreateRuleWizard';
 import RunHistory from '@/pages/RunHistory';
+import Documents from '@/pages/Documents';
 import Settings from '@/pages/Settings';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
@@ -46,6 +47,7 @@ const AuthenticatedApp = () => {
         <Route path="/rules/new" element={<CreateRuleWizard />} />
         <Route path="/rules/:id/edit" element={<CreateRuleWizard />} />
         <Route path="/run-history" element={<RunHistory />} />
+        <Route path="/documents" element={<Documents />} />
         <Route path="/settings" element={<Settings />} />
       </Route>
       <Route path="*" element={<PageNotFound />} />

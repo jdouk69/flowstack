@@ -3,11 +3,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/components/ui/use-toast';
 import Skeleton from '@/components/Skeleton';
 import EmptyState from '@/components/EmptyState';
-import { X, Search, FileText, Image as ImageIcon, File, ExternalLink, Merge, AlertCircle, FolderOpen, Loader2, CheckCircle2, HardDrive, RefreshCw, AlertTriangle } from 'lucide-react';
+import { X, Search, FileText, Image as ImageIcon, File, ExternalLink, Merge, AlertCircle, FolderOpen, Loader2, CheckCircle2, HardDrive, RefreshCw, AlertTriangle, Link2, Copy, Download as DownloadIcon } from 'lucide-react';
 
 const FILE_TYPE_CATEGORIES = [
   { value: 'all', label: 'All Files' },
@@ -23,6 +24,8 @@ const SORT_OPTIONS = [
   { value: 'modified_date', label: 'Modified Date' },
   { value: 'size', label: 'Size' },
 ];
+
+const BATCH_SIZE = 20;
 
 function getFileCategory(mimeType, isPdf) {
   if (isPdf) return 'pdf';
@@ -49,6 +52,10 @@ function formatDate(iso) {
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+function downloadUrlFor(fileId) {
+  return `https://drive.google.com/uc?export=download&id=${fileId}`;
+}
+
 export default function FileBrowser({ open, onClose, supplierId }) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
@@ -59,13 +66,20 @@ export default function FileBrowser({ open, onClose, supplierId }) {
   const [filterType, setFilterType] = useState('all');
   const [sortBy, setSortBy] = useState('name');
   const [merging, setMerging] = useState(false);
-  const [mergeResult, setMergeResult] = useState(null);
+
+  // Batch selection state
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [anchorId, setAnchorId] = useState(null);
+
+  // Merge + customer link state
+  const [autoLink, setAutoLink] = useState(false);
+  const [mergeInfo, setMergeInfo] = useState(null);
+  const [linkState, setLinkState] = useState(null);
 
   const loadFiles = useCallback(async () => {
     if (!supplierId) return;
     setLoading(true);
     setError(null);
-    setMergeResult(null);
     try {
       const res = await base44.functions.invoke('listWorkflowFiles', { supplier_id: supplierId });
       setFiles(res.data.files || []);
@@ -98,33 +112,19 @@ export default function FileBrowser({ open, onClose, supplierId }) {
       setSearch('');
       setFilterType('all');
       setSortBy('name');
-      setMergeResult(null);
+      setSelectedIds([]);
+      setAnchorId(null);
+      setMergeInfo(null);
+      setLinkState(null);
       loadFiles();
     }
   }, [open, supplierId]);
 
-  const handleMerge = async () => {
-    setMerging(true);
-    setError(null);
-    try {
-      const res = await base44.functions.invoke('mergePdfs', { supplier_id: supplierId });
-      setMergeResult(res.data);
-      toast({ title: 'Merge complete', description: `${res.data.merged_filename} created with ${res.data.pdf_count} PDFs` });
-      await loadFiles();
-    } catch (e) {
-      const msg = e.response?.data?.message || e.response?.data?.error || e.message || 'Merge failed';
-      setError({ type: 'merge_failed', message: msg });
-    }
-    setMerging(false);
-  };
-
-  const handleClose = () => {
-    setFiles([]);
-    setMeta(null);
-    setError(null);
-    setMergeResult(null);
-    onClose();
-  };
+  // Changing filters, sorting, or search resets batch progress
+  useEffect(() => {
+    setSelectedIds([]);
+    setAnchorId(null);
+  }, [search, filterType, sortBy]);
 
   const filtered = files
     .filter(f => {
@@ -142,8 +142,113 @@ export default function FileBrowser({ open, onClose, supplierId }) {
       }
     });
 
-  const pdfCount = files.filter(f => f.is_pdf).length;
+  // Selectable = original PDFs in the currently loaded + filtered view. Previous merged outputs are excluded.
+  const originalPdfs = filtered.filter(f => f.is_pdf && !f.name.includes('_merged_'));
+  const orderedIds = originalPdfs.map(f => f.id);
+  const pdfCount = files.filter(f => f.is_pdf && !f.name.includes('_merged_')).length;
   const canMerge = pdfCount >= 2;
+  const anchorName = anchorId ? (originalPdfs.find(f => f.id === anchorId)?.name || null) : null;
+
+  const selectAll = () => {
+    setSelectedIds(orderedIds);
+    setAnchorId(orderedIds[orderedIds.length - 1] || null);
+  };
+
+  const selectFirstBatch = () => {
+    const ids = orderedIds.slice(0, BATCH_SIZE);
+    setSelectedIds(ids);
+    setAnchorId(ids[ids.length - 1] || null);
+  };
+
+  const selectNextBatch = () => {
+    const idx = anchorId ? orderedIds.indexOf(anchorId) : -1;
+    if (idx === -1) {
+      // Anchor was filtered out — start a fresh first batch rather than re-selecting the same files
+      selectFirstBatch();
+      return;
+    }
+    const ids = orderedIds.slice(idx + 1, idx + 1 + BATCH_SIZE);
+    if (ids.length === 0) {
+      toast({ title: 'No more PDFs', description: 'Every PDF in the current view has been covered.' });
+      return;
+    }
+    setSelectedIds(ids);
+    setAnchorId(ids[ids.length - 1]);
+    if (ids.length < BATCH_SIZE) {
+      toast({ title: `Selected the final ${ids.length} PDF${ids.length === 1 ? '' : 's'}`, description: 'That was the last batch in the current view.' });
+    }
+  };
+
+  const clearSelection = () => {
+    setSelectedIds([]);
+    setAnchorId(null);
+  };
+
+  const toggleOne = (id) => {
+    setSelectedIds(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]));
+    setAnchorId(id);
+  };
+
+  const createLink = async (fileId, linkId = null) => {
+    setLinkState({ status: 'working' });
+    try {
+      const payload = linkId
+        ? { link_id: linkId }
+        : { file_id: fileId, supplier_id: supplierId, supplier_name: meta?.workflow_name };
+      const res = await base44.functions.invoke('createCustomerLink', payload);
+      setLinkState({ status: 'active', data: res.data });
+      toast({ title: 'Customer link ready', description: 'Use Copy customer link to share it.' });
+    } catch (e) {
+      setLinkState({
+        status: 'failed',
+        message: e.response?.data?.message || e.message || 'Could not create the customer link. The merge is safe — try again.'
+      });
+    }
+  };
+
+  const copyToClipboard = async (url) => {
+    try {
+      await navigator.clipboard.writeText(url);
+      toast({ title: 'Link copied', description: 'Paste it in an email or chat for your customer.' });
+    } catch (e) {
+      toast({ title: 'Could not copy', description: 'Long-press the link instead.' });
+    }
+  };
+
+  const handleMerge = async () => {
+    const useSelection = selectedIds.length > 0;
+    if (!useSelection && pdfCount < 2) return;
+    setMerging(true);
+    setError(null);
+    setMergeInfo(null);
+    setLinkState(null);
+    try {
+      const payload = { supplier_id: supplierId, date_str: new Date().toLocaleDateString('en-CA') };
+      if (useSelection) payload.file_ids = selectedIds;
+      const res = await base44.functions.invoke('mergePdfs', payload);
+      setMergeInfo(res.data);
+      toast({ title: 'Merge complete', description: `${res.data.merged_filename} created with ${res.data.pdf_count} PDFs` });
+      await loadFiles();
+      // Selection and its anchor are preserved so the next batch continues from here
+    } catch (e) {
+      const msg = e.response?.data?.message || e.response?.data?.error || e.message || 'Merge failed';
+      setError({ type: 'merge_failed', message: msg });
+    }
+    setMerging(false);
+  };
+
+  const handleClose = () => {
+    setFiles([]);
+    setMeta(null);
+    setError(null);
+    setMergeInfo(null);
+    setLinkState(null);
+    setSelectedIds([]);
+    setAnchorId(null);
+    onClose();
+  };
+
+  const isSelectable = (file) => file.is_pdf && !file.name.includes('_merged_');
 
   return (
     <AnimatePresence>
@@ -228,12 +333,48 @@ export default function FileBrowser({ open, onClose, supplierId }) {
               </div>
             )}
 
+            {/* Batch selection */}
+            {!loading && !error && files.length > 0 && (
+              <div className="px-5 pb-3 shrink-0 space-y-2">
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" variant="outline" onClick={selectAll} disabled={originalPdfs.length === 0}>Select all PDFs</Button>
+                  <Button size="sm" variant="outline" onClick={selectFirstBatch} disabled={originalPdfs.length === 0}>Select first 20</Button>
+                  <Button size="sm" variant="outline" onClick={selectNextBatch} disabled={originalPdfs.length === 0}>Select next 20</Button>
+                  <Button size="sm" variant="ghost" onClick={clearSelection} disabled={selectedIds.length === 0}>Clear selection</Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {selectedIds.length > 0 ? (
+                    <>
+                      <span className="font-medium text-foreground">{selectedIds.length} selected</span>
+                      {anchorName && <> · last selected: {anchorName.length > 32 ? anchorName.slice(0, 32) + '…' : anchorName}</>}
+                      {' · '}Selection covers the {originalPdfs.length} original PDFs currently loaded after search, filter and sort — not the entire folder. Changing filters, sorting, or reopening resets batch progress.
+                    </>
+                  ) : (
+                    <>Selection covers the {originalPdfs.length} original PDFs currently loaded after search, filter and sort. Batches of 20 merge most reliably — very large merges (80+ files, ~50 MB+ output) can exceed the backend memory limit and may need a retry. Changing filters, sorting, or reopening resets batch progress.</>
+                  )}
+                </p>
+              </div>
+            )}
+
             {/* Merge bar */}
-            {!loading && !error && canMerge && (
-              <div className="px-5 pb-3 shrink-0">
-                <Button className="w-full gap-2" onClick={handleMerge} disabled={merging}>
+            {!loading && !error && (canMerge || selectedIds.length > 1) && (
+              <div className="px-5 pb-3 shrink-0 space-y-2">
+                {meta && (
+                  <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                    <HardDrive className="h-3.5 w-3.5 shrink-0" />
+                    <span>Save merged PDF to Google Drive: <span className="font-medium text-foreground">{meta.folder_name}</span> · original PDFs are kept</span>
+                  </p>
+                )}
+                <label className="flex items-start gap-2 cursor-pointer rounded-lg bg-muted/40 p-2.5">
+                  <Checkbox checked={autoLink} onCheckedChange={setAutoLink} className="mt-0.5" />
+                  <span className="text-xs text-muted-foreground">
+                    Create customer link when merging finishes.{' '}
+                    <span className="font-medium text-foreground">Anyone with this link can view and download a separate copy of this PDF.</span>
+                  </span>
+                </label>
+                <Button className="w-full gap-2" onClick={handleMerge} disabled={merging || (selectedIds.length === 0 && pdfCount < 2)}>
                   {merging ? <Loader2 className="h-4 w-4 animate-spin" /> : <Merge className="h-4 w-4" />}
-                  {merging ? 'Merging PDFs...' : 'Merge PDFs'}
+                  {merging ? 'Merging PDFs...' : selectedIds.length > 0 ? `Merge selected PDFs (${selectedIds.length})` : 'Merge PDFs (all originals)'}
                 </Button>
               </div>
             )}
@@ -252,21 +393,70 @@ export default function FileBrowser({ open, onClose, supplierId }) {
               </div>
             )}
 
-            {/* Merge success */}
-            {mergeResult && (
-              <div className="mx-5 mb-3 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 flex items-center gap-3 shrink-0">
-                <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-emerald-800 dark:text-emerald-300">Merge complete</p>
-                  <p className="text-xs text-emerald-700 dark:text-emerald-400 truncate">{mergeResult.merged_filename} ({mergeResult.pdf_count} PDFs)</p>
+            {/* Merge success + customer link */}
+            {mergeInfo && !merging && (
+              <div className="mx-5 mb-3 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 shrink-0 space-y-2">
+                <div className="flex items-center gap-3">
+                  <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-emerald-800 dark:text-emerald-300">
+                      Merge complete{mergeInfo.verified ? ' — verified on Drive' : ''}
+                    </p>
+                    <p className="text-xs text-emerald-700 dark:text-emerald-400 truncate">
+                      {mergeInfo.merged_filename} ({mergeInfo.pdf_count} PDFs, {formatSize(mergeInfo.merged_size)})
+                    </p>
+                  </div>
                 </div>
-                <div className="flex gap-2 shrink-0">
-                  <Button size="sm" variant="outline" asChild>
-                    <a href={mergeResult.drive_folder_link} target="_blank" rel="noopener noreferrer">
-                      <ExternalLink className="h-3.5 w-3.5" /> Open
+                {mergeInfo.skipped?.length > 0 && (
+                  <p className="text-xs text-amber-700 dark:text-amber-400">
+                    Skipped {mergeInfo.skipped.length} unreadable or encrypted PDF{mergeInfo.skipped.length === 1 ? '' : 's'} — the rest merged fine.
+                  </p>
+                )}
+                {linkState?.status === 'working' && (
+                  <p className="text-xs text-primary flex items-center gap-2"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Creating the customer copy and link...</p>
+                )}
+                {linkState?.status === 'failed' && (
+                  <div className="p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800">
+                    <p className="text-xs font-medium text-amber-800 dark:text-amber-300">Merge succeeded, but the customer link failed. The merged PDF is safely in Drive.</p>
+                    <p className="text-xs text-amber-600 dark:text-amber-500 mt-0.5">{linkState.message}</p>
+                    <Button size="sm" variant="outline" className="mt-2 gap-2" onClick={() => createLink(mergeInfo.merged_file_id)}>
+                      <RefreshCw className="h-3.5 w-3.5" /> Retry link
+                    </Button>
+                  </div>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" variant="outline" className="gap-2 bg-white dark:bg-transparent" asChild>
+                    <a href={downloadUrlFor(mergeInfo.merged_file_id)} target="_blank" rel="noopener noreferrer">
+                      <DownloadIcon className="h-3.5 w-3.5" /> Download merged PDF
                     </a>
                   </Button>
-                  <Button size="sm" onClick={handleClose}>Done</Button>
+                  <Button size="sm" variant="outline" className="gap-2 bg-white dark:bg-transparent" asChild>
+                    <a href={mergeInfo.drive_folder_link} target="_blank" rel="noopener noreferrer">
+                      <FolderOpen className="h-3.5 w-3.5" /> Open Drive copy
+                    </a>
+                  </Button>
+                  {linkState?.status === 'active' ? (
+                    <>
+                      <Button size="sm" className="gap-2" onClick={() => copyToClipboard(linkState.data.download_url)}>
+                        <Copy className="h-3.5 w-3.5" /> Copy customer link
+                      </Button>
+                      <Button size="sm" variant="outline" className="gap-2 bg-white dark:bg-transparent" asChild>
+                        <a href={linkState.data.share_url} target="_blank" rel="noopener noreferrer">
+                          <ExternalLink className="h-3.5 w-3.5" /> Open customer copy
+                        </a>
+                      </Button>
+                    </>
+                  ) : (!linkState || linkState.status === 'failed') && (
+                    <Button size="sm" className="gap-2" onClick={() => createLink(mergeInfo.merged_file_id)}>
+                      <Link2 className="h-3.5 w-3.5" /> Get customer link
+                    </Button>
+                  )}
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Large downloads: Google may show a confirmation page before the file starts. Customer links never expire automatically — revoke them in Documents when you're done.
+                </p>
+                <div className="flex justify-end">
+                  <Button size="sm" variant="ghost" onClick={handleClose}>Done</Button>
                 </div>
               </div>
             )}
@@ -316,44 +506,58 @@ export default function FileBrowser({ open, onClose, supplierId }) {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {filtered.map(file => (
-                    <div key={file.id} className="flex items-center gap-3 p-3 rounded-xl border bg-card hover:bg-accent/50 transition-colors">
-                      <div className="shrink-0">{getFileIcon(file.mime_type, file.is_pdf)}</div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{file.name}</p>
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground mt-0.5">
-                          <span>{formatSize(file.size)}</span>
-                          {file.source_dates?.email_received || file.source_dates?.pdf_creation_date ? (
-                            <>
-                              {file.source_dates.email_received && (
-                                <>
-                                  <span className="hidden sm:inline">·</span>
-                                  <span>Email received: {formatDate(file.source_dates.email_received)}</span>
-                                </>
-                              )}
-                              {file.source_dates.pdf_creation_date && (
-                                <>
-                                  <span className="hidden sm:inline">·</span>
-                                  <span>PDF metadata creation date: {formatDate(file.source_dates.pdf_creation_date)}</span>
-                                </>
-                              )}
-                            </>
+                  {filtered.map(file => {
+                    const selectable = isSelectable(file);
+                    return (
+                      <div key={file.id} className={`flex items-center gap-3 p-3 rounded-xl border transition-colors ${selectable && selectedIds.includes(file.id) ? 'border-primary bg-primary/5' : 'bg-card'} hover:bg-accent/50`}>
+                        <div className="shrink-0 w-5 flex justify-center">
+                          {selectable ? (
+                            <Checkbox
+                              checked={selectedIds.includes(file.id)}
+                              onCheckedChange={() => toggleOne(file.id)}
+                              aria-label={`Select ${file.name}`}
+                            />
                           ) : (
-                            <>
-                              <span className="hidden sm:inline">·</span>
-                              <span>{formatDate(file.modified_date)}</span>
-                            </>
+                            <span className="text-[9px] font-semibold text-muted-foreground bg-muted px-1 py-0.5 rounded leading-tight">merged</span>
                           )}
                         </div>
+                        <div className="shrink-0">{getFileIcon(file.mime_type, file.is_pdf)}</div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{file.name}</p>
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground mt-0.5">
+                            <span>{formatSize(file.size)}</span>
+                            {file.source_dates?.email_received || file.source_dates?.pdf_creation_date ? (
+                              <>
+                                {file.source_dates.email_received && (
+                                  <>
+                                    <span className="hidden sm:inline">·</span>
+                                    <span>Email received: {formatDate(file.source_dates.email_received)}</span>
+                                  </>
+                                )}
+                                {file.source_dates.pdf_creation_date && (
+                                  <>
+                                    <span className="hidden sm:inline">·</span>
+                                    <span>PDF metadata creation date: {formatDate(file.source_dates.pdf_creation_date)}</span>
+                                  </>
+                                )}
+                              </>
+                            ) : (
+                              <>
+                                <span className="hidden sm:inline">·</span>
+                                <span>{formatDate(file.modified_date)}</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                        <Button size="sm" variant="ghost" asChild className="shrink-0">
+                          <a href={file.web_view_link} target="_blank" rel="noopener noreferrer">
+                            <ExternalLink className="h-3.5 w-3.5" />
+                            <span className="hidden sm:inline ml-1">Open</span>
+                          </a>
+                        </Button>
                       </div>
-                      <Button size="sm" variant="ghost" asChild className="shrink-0">
-                        <a href={file.web_view_link} target="_blank" rel="noopener noreferrer">
-                          <ExternalLink className="h-3.5 w-3.5" />
-                          <span className="hidden sm:inline ml-1">Open</span>
-                        </a>
-                      </Button>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
-import { Home, FileText, History, Settings as SettingsIcon, LogOut, Menu, X } from 'lucide-react';
+import { Home, FileText, History, Settings as SettingsIcon, LogOut, Menu, X, Link2 } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import Logo from '@/components/Logo';
 import { Button } from '@/components/ui/button';
@@ -10,6 +10,7 @@ const navItems = [
   { path: '/', label: 'Home', icon: Home },
   { path: '/rules', label: 'Workflows', icon: FileText },
   { path: '/run-history', label: 'History', icon: History },
+  { path: '/documents', label: 'Documents', icon: Link2 },
   { path: '/settings', label: 'Settings', icon: SettingsIcon },
 ];
 

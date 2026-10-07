@@ -70,18 +70,51 @@ Deno.serve(async (req) => {
       return Response.json({ error: err.code || 'FOLDER_ERROR', message: err.message, ...(err.details || {}) }, { status });
     }
 
-    const pdfs = await listPdfsInFolder(driveAuth, folderId);
-    if (pdfs.length === 0) {
-      return Response.json({ error: 'No PDFs found in folder' }, { status: 404 });
-    }
+    // Selection mode: merge exactly the chosen PDFs (never silently truncate).
+    const fileIds = Array.isArray(body.file_ids) ? body.file_ids.filter(Boolean) : [];
+    let toMerge = [];
+    let selectionMode = false;
 
-    const toMerge = pdfs.filter(p => !p.name.includes('_merged_'));
-    if (toMerge.length === 0) {
-      return Response.json({ error: 'No PDFs to merge' }, { status: 404 });
+    if (fileIds.length > 0) {
+      selectionMode = true;
+      const valid = [];
+      for (let i = 0; i < fileIds.length; i += 6) {
+        const chunk = fileIds.slice(i, i + 6);
+        const checks = await Promise.allSettled(chunk.map(id =>
+          fetch(`https://www.googleapis.com/drive/v3/files/${id}?fields=id,name,mimeType,parents,trashed`, { headers: driveAuth, signal: AbortSignal.timeout(10000) })
+            .then(r => r.ok ? r.json() : null)
+        ));
+        checks.forEach(c => {
+          const f = c.status === 'fulfilled' ? c.value : null;
+          if (f && !f.trashed && (f.parents || []).includes(folderId) && f.mimeType === 'application/pdf') valid.push(f);
+        });
+      }
+      if (valid.length !== fileIds.length) {
+        return Response.json({
+          error: 'SELECTION_INVALID',
+          message: `${fileIds.length - valid.length} of the selected files were missing, trashed, or not PDFs in this folder. Merge aborted — nothing was changed.`,
+          found: valid.length,
+          requested: fileIds.length
+        }, { status: 400 });
+      }
+      if (valid.length < 2) {
+        return Response.json({ error: 'Select at least 2 PDFs to merge' }, { status: 400 });
+      }
+      toMerge = valid;
+    } else {
+      const pdfs = await listPdfsInFolder(driveAuth, folderId);
+      if (pdfs.length === 0) {
+        return Response.json({ error: 'No PDFs found in folder' }, { status: 404 });
+      }
+      toMerge = pdfs.filter(p => !p.name.includes('_merged_'));
+      if (toMerge.length === 0) {
+        return Response.json({ error: 'No PDFs to merge' }, { status: 404 });
+      }
     }
 
     const mergedPdf = await PDFDocument.create();
     let mergedCount = 0;
+    const skipped = [];
     for (const pdf of toMerge) {
       try {
         const pdfBytes = await downloadFile(driveAuth, pdf.id);
@@ -90,7 +123,7 @@ Deno.serve(async (req) => {
         pages.forEach(p => mergedPdf.addPage(p));
         mergedCount++;
       } catch (e) {
-        // skip problematic PDF
+        skipped.push(pdf.name);
       }
     }
 
@@ -99,15 +132,46 @@ Deno.serve(async (req) => {
     }
 
     const mergedBytes = await mergedPdf.save();
-    const dateStr = new Date().toISOString().slice(0, 10);
+    const dateStr = typeof body.date_str === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.date_str)
+      ? body.date_str
+      : new Date().toISOString().slice(0, 10);
     const mergedFilename = `${supplier.name}_merged_${dateStr}.pdf`;
 
-    await uploadFileToDrive(driveAuth, mergedFilename, folderId, mergedBytes);
+    // Idempotent save: update an existing merged file with the same name instead of creating a duplicate.
+    let uploadedId = null;
+    const existingQ = await fetch(
+      `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(`'${folderId}' in parents and trashed=false and name='${mergedFilename.replace(/'/g, "\\'")}'`)}&fields=files(id)&pageSize=1`,
+      { headers: driveAuth }
+    );
+    const existing = (await existingQ.json()).files || [];
+    if (existing.length > 0) {
+      const upRes = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${existing[0].id}?uploadType=media`, {
+        method: 'PATCH',
+        headers: { ...driveAuth, 'Content-Type': 'application/pdf' },
+        body: mergedBytes
+      });
+      if (!upRes.ok) throw new Error('Failed to update the existing merged file');
+      uploadedId = existing[0].id;
+    } else {
+      const up = await uploadFileToDrive(driveAuth, mergedFilename, folderId, mergedBytes);
+      uploadedId = up.id;
+    }
+
+    // Verify the saved file on Drive before reporting success.
+    const verRes = await fetch(`https://www.googleapis.com/drive/v3/files/${uploadedId}?fields=id,size,md5Checksum`, { headers: driveAuth });
+    const ver = await verRes.json();
+    const verified = parseInt(ver.size || '0', 10) === mergedBytes.length;
 
     return Response.json({
       success: true,
       merged_filename: mergedFilename,
+      merged_file_id: uploadedId,
+      merged_size: mergedBytes.length,
+      verified,
       pdf_count: mergedCount,
+      selection_mode: selectionMode,
+      requested_count: toMerge.length,
+      skipped,
       drive_folder_link: `https://drive.google.com/drive/folders/${folderId}`
     });
   } catch (error) {
