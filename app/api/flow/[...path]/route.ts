@@ -145,11 +145,12 @@ async function route(req:Request,{params}:{params:Promise<{path:string[]}>}){
   if(req.method==='GET'){
    if(entity){const r=await find(owner,entity,'Document');if(!r)return json({error:'Document not found'},404);const d=JSON.parse(r.data);if(d.storage_kind==='drive_reference')return Response.redirect('https://drive.google.com/file/d/'+encodeURIComponent(d.source_drive_file_id)+'/view',303);const obj=await bucket().get(d.key);if(!obj)return json({error:'File unavailable'},404);return new Response(obj.body,{headers:{'Content-Type':d.mime_type||'application/pdf','Content-Disposition':`${url.searchParams.get('preview')==='1'?'inline':'attachment'}; filename="${String(d.name).replace(/[^\x20-\x7e]|["\\]/g,'_')}"; filename*=UTF-8''${encodeURIComponent(d.name)}`,'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'}});}
    if(url.searchParams.get('page')==='1'){
-    const search=url.searchParams.get('search')||'',type=url.searchParams.get('type')||'',view=url.searchParams.get('view')||'',cursor=url.searchParams.get('cursor');
-    if(search.length>200||/[\x00-\x1f]/.test(search)||type&&!['pdf','images','word','excel','powerpoint','zip'].includes(type)||!['','merged','shared'].includes(view))return json({error:'Invalid file filter.'},400);
+    const search=url.searchParams.get('search')||'',type=url.searchParams.get('type')||'',view=url.searchParams.get('view')||'',year=url.searchParams.get('year')||'',cursor=url.searchParams.get('cursor');
+    if(search.length>200||/[\x00-\x1f]/.test(search)||type&&!['pdf','images','word','excel','powerpoint','zip'].includes(type)||!['','merged','shared'].includes(view)||year&&!/^\d{4}$/.test(year))return json({error:'Invalid file filter.'},400);
     const limit=Math.min(100,Math.max(1,Math.trunc(Number(url.searchParams.get('limit')))||100));
     let where='owner=? AND entity=?';const values:any[]=[owner,'Document'];
     if(url.searchParams.has('workflow')){where+=" AND COALESCE(json_extract(data,'$.workflow'),'')=?";values.push(url.searchParams.get('workflow'));}
+    if(year){where+=" AND strftime('%Y',COALESCE(NULLIF(json_extract(data,'$.source_email_received'),''),created))=?";values.push(year);}
     if(search){where+=" AND instr(lower(json_extract(data,'$.name')),lower(?))>0";values.push(search);}
     if(type){where+=" AND COALESCE(json_extract(data,'$.file_type'),'pdf')=?";values.push(type);}
     if(view==='merged')where+=" AND json_extract(data,'$.merged')=1";
