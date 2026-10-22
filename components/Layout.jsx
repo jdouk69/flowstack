@@ -64,8 +64,8 @@ export default function Layout() {
       )}
 
       {/* Sidebar */}
-      <aside className={`fixed top-0 left-0 z-50 h-full w-64 overflow-y-auto bg-background border-r transition-transform duration-300 ${auditLayout ? '' : 'lg:translate-x-0'} ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="h-16 flex items-center justify-between px-5 border-b">
+      <aside className={`fixed top-0 bottom-0 left-0 z-50 flex h-[100dvh] w-64 flex-col overflow-hidden bg-background border-r transition-transform duration-300 ${auditLayout ? '' : 'lg:translate-x-0'} ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="h-16 shrink-0 flex items-center justify-between px-5 border-b">
           <Link to="/">
             <Logo size="md" />
           </Link>
@@ -74,7 +74,7 @@ export default function Layout() {
           </Button>
         </div>
 
-        <nav className="p-3 space-y-1">
+        <nav className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 pb-4 space-y-1 [scrollbar-gutter:stable]" style={{ WebkitOverflowScrolling: 'touch' }}>
           {navItems.map(item => {
             const Icon = item.icon;
             const active = location.pathname === item.path;
@@ -109,7 +109,7 @@ export default function Layout() {
           </details>
         </nav>
 
-        <div className="absolute bottom-0 inset-x-0 p-3 border-t">
+        <div className="shrink-0 border-t px-3 pt-3 pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)]">
           {user && (
             <div className="flex items-center gap-3 px-3 py-2 mb-1">
               <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
