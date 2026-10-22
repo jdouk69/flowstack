@@ -118,3 +118,4 @@ export default function AutomationDashboard({supplierId,supplierName}){
   </details>
  </div>;
 }
+
