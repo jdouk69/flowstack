@@ -14,7 +14,9 @@ export default function AutomationDashboard(){
  const [auditMode,setAuditMode]=useState('incremental'),[dateFrom,setDateFrom]=useState(''),[dateTo,setDateTo]=useState('');
  const active=useRef(null);
  const refresh=useCallback(async()=>{try{const data=await request('/automation');setStatus(data);}catch(e){setError(e.message||'Automation status unavailable.');}},[]);
- useEffect(()=>{refresh();const timer=setInterval(refresh,5000);return()=>{clearInterval(timer);active.current?.abort();};},[refresh]);
+ const pollDelay=busy?15000:status?.running?5000:30000;
+ useEffect(()=>{const poll=()=>{if(document.visibilityState==='visible')refresh();};poll();const timer=setInterval(poll,pollDelay);document.addEventListener('visibilitychange',poll);return()=>{clearInterval(timer);document.removeEventListener('visibilitychange',poll);};},[refresh,pollDelay]);
+ useEffect(()=>()=>{active.current?.abort();},[]);
  const runNow=async()=>{if(active.current)return;const controller=new AbortController();active.current=controller;setBusy(true);setError('');setLastResult({status:'running',stage:'starting'});try{const options={audit_mode:auditMode,...(auditMode==='date_range'?{date_from:dateFrom,date_to:dateTo}:{})};await advanceManualAudit({signal:controller.signal,options,send:body=>request('/automation',{method:'POST',body:JSON.stringify(body),signal:controller.signal}),onProgress:setLastResult});await refresh();}catch(e){setError(e.message||'The audit connection was interrupted. Saved progress can be resumed.');}finally{active.current=null;setBusy(false);}};
  const latest=lastResult?.status==='already_running'?status?.last_all_vendor_run:lastResult||status?.last_all_vendor_run;
  const resumable=!busy&&latest&&['running','needs_retry'].includes(latest.status)&&!status?.running;
