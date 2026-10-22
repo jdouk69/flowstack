@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {quantityReport} from '../lib/quantity-report.mjs';
+const rows=[{id:'one',invoice_id:'invoice',description:'Sand',quantity:'0.10',unit:'kg',currency:'EUR'},{id:'two',invoice_id:'invoice',description:'sand',quantity:'0,20',unit:'kg',currency:'EUR'},{id:'three',invoice_id:'invoice',description:'Sand',quantity:'2',unit:null,currency:'EUR'},{id:'four',invoice_id:'invoice',description:'Sand',quantity:'3',unit:null,currency:'EUR'},{id:'five',invoice_id:'invoice',description:'Sand',quantity:null,unit:'kg',currency:'EUR'}];
+for(const row of rows){row.supplier_key='tournas';row.account_information='8891';}
+const db={prepare(){return {bind(){return this;},async all(){return {results:rows};}};}};
+test('quantity summary uses exact decimals, shows unknowns and keeps missing units separate',async()=>{const result=await(await quantityReport(new Request('https://test.local/api/flow/reports'),{db,owner:'owner'})).json();assert.equal(result.summary.length,3);const kg=result.summary.find(row=>row.unit==='kg');assert.equal(kg.quantity,'0.3');assert.equal(kg.unknown_quantities,1);assert.equal(result.invoice_count,1);});
+test('over-limit reports never return a partial success',async()=>{const large={prepare(){return {bind(){return this;},async all(){return {results:Array(10001).fill(rows[0])};}};}};assert.equal((await quantityReport(new Request('https://test.local/api/flow/reports'),{db:large,owner:'owner'})).status,413);});
+
+test('quantity summaries never combine distinct or unknown accounts',async()=>{const scoped=[...rows.slice(0,2),{...rows[0],id:'other',account_information:'8655'},{...rows[0],id:'unknown1',account_information:null},{...rows[0],id:'unknown2',account_information:null}];const db={prepare(){return {bind(){return this},async all(){return {results:scoped}}}}};const result=await(await quantityReport(new Request('https://test.local/api/flow/reports'),{db,owner:'owner'})).json();assert.equal(result.summary.length,4);assert.equal(result.summary.find(r=>r.account==='8891').quantity,'0.3');});

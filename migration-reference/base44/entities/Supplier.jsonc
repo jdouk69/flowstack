@@ -1,0 +1,74 @@
+{
+  "name": "Supplier",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "title": "Rule Name"
+    },
+    "search_type": {
+      "type": "string",
+      "enum": [
+        "sender_email",
+        "company_name",
+        "gmail_search"
+      ],
+      "default": "sender_email",
+      "title": "Search Type"
+    },
+    "email": {
+      "type": "string",
+      "title": "Sender Email"
+    },
+    "keyword": {
+      "type": "string",
+      "title": "Search Value"
+    },
+    "file_types": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "pdf",
+          "images",
+          "word",
+          "excel",
+          "powerpoint",
+          "zip"
+        ]
+      },
+      "default": [
+        "pdf"
+      ],
+      "title": "File Types"
+    },
+    "drive_folder_name": {
+      "type": "string",
+      "title": "Destination Folder"
+    },
+    "drive_folder_id": {
+      "type": "string",
+      "title": "Drive Folder ID"
+    },
+    "last_run": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Last Run"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "new",
+        "active",
+        "error"
+      ],
+      "default": "new",
+      "title": "Status"
+    }
+  },
+  "required": [
+    "name",
+    "search_type",
+    "drive_folder_name"
+  ]
+}

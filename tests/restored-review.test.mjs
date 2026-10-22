@@ -1,0 +1,6 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {restoredReviewAt,needsFreshReview} from '../lib/restored-review.mjs';
+const old={created:'2026-10-11T10:00:00Z',sources:[{document_id:'one'}],results:[{document_id:'one',status:'skipped'}]};
+const document={id:'one',processing_status:'awaiting_analysis',updated_date:'2026-10-11T11:00:00Z'};
+test('pending older restorations are recovered and ready for a fresh export',()=>{const at=restoredReviewAt(document,null,[old]);assert.equal(at,document.updated_date);assert.equal(needsFreshReview(document,[old],at),true);const newer={...old,created:'2026-10-11T12:00:00Z',results:[]};assert.equal(needsFreshReview(document,[newer,old],at),false);assert.equal(restoredReviewAt(document,{capture_method:'manual'},[old]),null);assert.equal(restoredReviewAt({...document,invoice_review_classification:'not_invoice'},null,[old]),null);assert.equal(restoredReviewAt({...document,processing_status:'needs_review'},null,[old]),null);});
+test('a completed re-review clears the pending restored label',()=>{const newer={...old,created:'2026-10-11T12:00:00Z',results:[{document_id:'one',status:'needs_attention'}]};assert.equal(restoredReviewAt({...document,invoice_review_restored_at:document.updated_date},null,[old,newer]),null);assert.equal(needsFreshReview(document,[],null),true);});

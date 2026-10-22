@@ -1,0 +1,20 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createRequire,builtinModules} from 'node:module';
+import {resolve} from 'node:path';
+import {PDFDocument,StandardFonts} from 'pdf-lib';
+import fontkit from '@pdf-lib/fontkit';
+import {reportFontBytes} from '../lib/report-font.mjs';
+const require=createRequire(resolve('package.json'));
+const {Miniflare}=require(require.resolve('miniflare',{paths:[require.resolve('wrangler')]}));
+const {build}=require(require.resolve('esbuild',{paths:[require.resolve('wrangler')]}));
+test('bundled server PDF reader extracts a real PDF in a Workers isolate without a relative worker module',async t=>{
+ const built=await build({stdin:{contents:"import {serverPages} from './lib/extraction/server-pdf.mjs'; export default {async fetch(request){try{return Response.json(await serverPages(new Uint8Array(await request.arrayBuffer())))}catch(e){return Response.json({error:e.message},{status:500})}}}",resolveDir:process.cwd()},bundle:true,write:false,format:'esm',platform:'neutral',target:'es2022',external:['node:*',...builtinModules],mainFields:['module','main'],conditions:['import'],logLevel:'silent'});
+ const mf=new Miniflare({modules:[{type:'ESModule',path:resolve('isolated-pdf-worker.mjs'),contents:built.outputFiles[0].text}],compatibilityDate:'2026-05-15',compatibilityFlags:['nodejs_compat']});t.after(()=>mf.dispose());
+ const pdf=await PDFDocument.create(),font=await pdf.embedFont(StandardFonts.Helvetica);
+ pdf.addPage().drawText('Isolated original PDF - page 1',{font});pdf.addPage().drawText('Quantity 2 Unit price 12.50 Total 25.00',{font});
+ pdf.registerFontkit(fontkit);const greekFont=await pdf.embedFont(reportFontBytes(),{subset:true});pdf.addPage().drawText('Ο ΠΑΡΑΛΑΒΩΝ — ΤΣΙΜΕΝΤΟ',{font:greekFont});
+ const response=await mf.dispatchFetch('https://isolated.test/read',{method:'POST',body:await pdf.save()});
+ const data=await response.json();assert.equal(response.status,200,JSON.stringify(data));assert.equal(data.length,3);assert.match(data[0].text,/Isolated original PDF/);assert.match(data[1].text,/25.00/);assert.equal(data[2].text,'Ο ΠΑΡΑΛΑΒΩΝ — ΤΣΙΜΕΝΤΟ');assert.ok(data[0].fragments.length);
+ const invalid=await mf.dispatchFetch('https://isolated.test/read',{method:'POST',body:'not a PDF'});assert.equal(invalid.status,500);assert.doesNotMatch((await invalid.json()).error,/No such module/);
+});

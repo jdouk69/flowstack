@@ -1,0 +1,301 @@
+import {akronFixture} from './tests/akron-fixture.mjs';
+import assert from 'node:assert/strict';
+import {resolve} from 'node:path';
+import {readdirSync,readFileSync} from 'node:fs';
+import {createRequire} from 'node:module';
+import {PDFDocument} from 'pdf-lib';
+const require=createRequire(resolve('package.json'));const {Miniflare}=require(require.resolve('miniflare',{paths:[require.resolve('wrangler')]}));
+const mf=new Miniflare({compatibilityDate:'2026-05-15',compatibilityFlags:['nodejs_compat'],modules:readdirSync(resolve('dist/server'),{recursive:true}).filter(p=>p.endsWith('.js')||p.endsWith('.mjs')).sort((a,b)=>a==='index.js'?-1:b==='index.js'?1:0).map(path=>({type:'ESModule',path:resolve('dist/server',path)})),modulesRoot:resolve('dist/server'),modulesRules:[{type:'ESModule',include:['**/*.js','**/*.mjs'],fallthrough:true}],d1Databases:['DB'],r2Buckets:['BUCKET'],bindings:{GOOGLE_TOKEN_ENCRYPTION_KEY:Buffer.alloc(32,7).toString('base64')}});
+const headers={'oai-authenticated-user-id':'owner-one','oai-authenticated-user-email':'test@example.com','Origin':'https://test.local'};
+const send=async(path,body,method='POST',h=headers)=>{let data=body instanceof FormData?body:body?JSON.stringify(body):undefined;let hs={...h,...(body instanceof FormData?{}:{'Content-Type':'application/json'})};if(body instanceof FormData){const encoded=new Request('https://test.local',{method:'POST',body});data=await encoded.arrayBuffer();hs['Content-Type']=encoded.headers.get('content-type');}return mf.dispatchFetch('https://test.local/api/flow'+path,{method,headers:hs,body:data,redirect:'manual'});};
+const value=async r=>{assert.equal(r.status,200,await r.clone().text());return r.json();};
+try{
+assert.equal((await mf.dispatchFetch('https://test.local/api/approved-reassessment')).status,403);
+const db=await mf.getD1Database('DB');for(const migration of readdirSync('drizzle').filter(f=>f.endsWith('.sql')).sort())for(const sql of readFileSync('drizzle/'+migration,'utf8').split('--> statement-breakpoint'))await db.prepare(sql).run();
+assert.equal((await send('/packages',null,'GET',{})).status,401);
+const packageRecord={name:'Customer fixtures',filename:'Customer fixtures.zip',created:'2026-10-07T00:00:00Z',manifest:[{name:'original.pdf',zip_name:'original.pdf',size:100,key:'private/object'}],total:250,status:'ready',index:1,uploaded:250,drive_id:'customer-fixture',session:'PRIVATE-SESSION',storage:'private/staging',share_status:'private'};
+await db.prepare('INSERT INTO records VALUES(?,?,?,?,?,?)').bind('package:fixture','owner-one','CustomerPackage',JSON.stringify(packageRecord),'now','now').run();
+const packageList=await value(await send('/packages',null,'GET'));assert.equal(packageList.packages.length,1);assert.equal(packageList.packages[0].download_link,null);assert.ok(!JSON.stringify(packageList).includes('PRIVATE-SESSION'));assert.ok(!JSON.stringify(packageList).includes('private/object'));
+assert.equal((await send('/packages/package%3Afixture',null,'GET',{...headers,'oai-authenticated-user-id':'other'})).status,404);
+assert.equal((await send('/packages/package%3Afixture/step',{},'POST',{...headers,Origin:'https://evil.example'})).status,403);
+assert.equal((await send('/packages/package%3Afixture/step',{},'POST',{...headers,'oai-authenticated-user-id':'other'})).status,404);
+console.log('PASS: customer package owner-only routes, encoded IDs, origin guard and safe durable history.');
+const driveReference={storage_kind:'drive_reference',source_drive_file_id:'large-original',mime_type:'application/pdf',file_type:'pdf',name:'large.pdf',size:70*1024*1024,md5:'fixture-md5'};
+await db.prepare('INSERT INTO records VALUES(?,?,?,?,?,?)').bind('reference-test','owner-one','Document',JSON.stringify(driveReference),'now','now').run();
+assert.equal((await send('/documents/reference-test',null,'GET')).status,303);
+assert.equal((await send('/documents/reference-test',null,'GET',{...headers,'oai-authenticated-user-id':'other'})).status,404);
+assert.equal((await send('/document-analysis/reference-test',null,'GET')).status,409);
+assert.equal((await send('/invoices',{document_id:'reference-test'})).status,409);
+assert.equal((await send('/documents/merge',{ids:['reference-test','reference-test-2'],name:'merged.pdf'})).status,404);
+await db.prepare('INSERT INTO records VALUES(?,?,?,?,?,?)').bind('reference-test-2','owner-one','Document',JSON.stringify(driveReference),'now','now').run();
+assert.equal((await send('/documents/merge',{ids:['reference-test','reference-test-2'],name:'merged.pdf'})).status,409);
+assert.equal((await send('/documents/reference-test',null,'DELETE')).status,200);
+assert.equal((await send('/documents/reference-test-2',null,'DELETE')).status,200);
+console.log('PASS: Drive-reference owner redirect, local-operation rejection and keyless removal.');
+assert.equal((await send('/documents',null,'GET',{})).status,401);
+assert.equal((await send('/google/status',null,'GET',{})).status,401);
+assert.equal((await value(await send('/google/status',null,'GET'))).configured,false);
+const googleConfig={client_id:'123-fixture.apps.googleusercontent.com',client_secret:'fixture-secret-no-real-credential'};
+assert.equal((await send('/google/configure',googleConfig,'POST',{...headers,Origin:'https://evil.example'})).status,403);
+await value(await send('/google/configure',googleConfig));
+const googleStatus=await value(await send('/google/status',null,'GET'));assert.equal(googleStatus.configured,true);assert.equal(googleStatus.connected,false);assert.ok(!JSON.stringify(googleStatus).includes(googleConfig.client_secret));
+const privateGoogle=await db.prepare("SELECT data FROM records WHERE entity='GooglePrivate'").first();assert.ok(!privateGoogle.data.includes(googleConfig.client_secret));
+assert.equal((await value(await send('/google/status',null,'GET',{...headers,'oai-authenticated-user-id':'different-owner'}))).configured,false);
+const googleStart=await value(await send('/google/start',{}));const authURL=new URL(googleStart.url);assert.equal(authURL.hostname,'accounts.google.com');assert.equal(authURL.searchParams.get('redirect_uri'),'https://flowstack.jimdoukakis.chatgpt.site/api/flow/google/callback');
+const googleState=authURL.searchParams.get('state');const cancelled=await send('/google/callback?state='+googleState+'&error=access_denied',null,'GET');assert.equal(cancelled.status,303);assert.match(cancelled.headers.get('location'),/google=cancelled/);
+const replay=await send('/google/callback?state='+googleState+'&error=access_denied',null,'GET');assert.match(replay.headers.get('location'),/invalid_state/);
+
+assert.equal((await send('/records/Supplier',{name:'X',drive_folder_name:'X' },'POST',{...headers,Origin:'https://evil.example'})).status,403);
+const rule=await value(await send('/records/Supplier',{name:'Supplier',drive_folder_name:'Invoices',search_type:'sender_email',email:'vendor@example.com'}));
+assert.equal((await value(await send('/records/Supplier',null,'GET')))[0].id,rule.id);
+await value(await send('/records/Supplier/'+rule.id,{name:'Updated',drive_folder_name:'Invoices'},'PATCH'));
+const updated=await value(await send('/records/Supplier/'+rule.id,null,'GET'));assert.equal(updated.name,'Updated');assert.equal(updated.email,'vendor@example.com');
+const other={...headers,'oai-authenticated-user-id':'owner-two'};assert.equal((await send('/records/Supplier/'+rule.id,null,'GET',other)).status,404);
+const makePDF=async(label)=>{const pdf=await PDFDocument.create();pdf.addPage().drawText(label);return await pdf.save();};
+const bytes=await makePDF('First');
+const form=bytes=>{const f=new FormData();f.append('file',new File([bytes],'invoice.pdf',{type:'application/pdf'}));f.append('workflow',rule.id);return f;};
+const first=await value(await send('/documents/upload',form(bytes)));assert.equal(first.duplicate,false);
+const verifiedStorage=await value(await send('/functions/verifyDocument',{document_id:first.document.id}));assert.equal(verifiedStorage.local.status,'verified');assert.equal(verifiedStorage.drive.status,'not_saved');assert.equal(verifiedStorage.verified,false);assert.ok(!JSON.stringify(verifiedStorage).includes('key'));
+assert.equal((await send('/functions/verifyDocument',{document_id:first.document.id},'POST',other)).status,404);assert.equal((await send('/functions/verifyDocument',{document_id:first.document.id},'POST',{...headers,Origin:'https://evil.example'})).status,403);
+const duplicate=await value(await send('/documents/upload',form(bytes)));assert.equal(duplicate.duplicate,true);
+const second=await value(await send('/documents/upload',form(await makePDF('Second'))));assert.notEqual(first.document.id,second.document.id);assert.match(second.document.name,/\[alt-/);assert.equal(second.document.original_name,'invoice.pdf');
+const list=await value(await send('/documents',null,'GET'));assert.equal(list.length,2);assert.equal(list.some(d=>'key'in d),false);
+assert.equal((await send('/documents/'+first.document.id,null,'GET',other)).status,404);
+assert.equal((await send('/documents/merge',{ids:[first.document.id,second.document.id]},'POST',other)).status,404);
+const merged=await value(await send('/documents/merge',{ids:[first.document.id,second.document.id],name:'Two invoices.pdf'}));assert.equal(merged.document.pages,2);assert.equal(merged.document.workflow,rule.id);
+await db.prepare('INSERT INTO records(id,owner,entity,data,created,updated) VALUES(?,?,?,?,?,?)').bind('drive:share:owner-one:'+merged.document.id,'owner-one','DriveShare',JSON.stringify({status:'active',filename:merged.document.name,view_link:'https://drive.google.com/file/d/customer-fixture/view',download_link:'https://drive.google.com/download/customer-fixture',file_id:'private-internal',permission_id:'internal-permission',md5:'internal-checksum'}),'now','now').run();
+assert.equal((await send('/documents/'+merged.document.id,null,'DELETE')).status,409);
+const sharedPage=await value(await send('/documents?page=1&view=shared',null,'GET'));assert.equal(sharedPage.documents.length,1);assert.equal(sharedPage.documents[0].id,merged.document.id);assert.match(sharedPage.documents[0].customer_share.download_link,/customer-fixture/);assert.equal(sharedPage.documents[0].customer_share.file_id,undefined);assert.equal(sharedPage.documents[0].customer_share.permission_id,undefined);assert.equal(sharedPage.documents[0].customer_share.md5,undefined);
+const legacyShared=await value(await send('/documents',null,'GET'));assert.match(legacyShared.find(d=>d.id===merged.document.id).customer_share.view_link,/customer-fixture/);
+assert.equal((await value(await send('/documents?page=1&view=shared',null,'GET',other))).documents.length,0);
+const mergedPage=await value(await send('/documents?page=1&view=merged',null,'GET'));assert.equal(mergedPage.documents.length,1);assert.equal(mergedPage.documents[0].id,merged.document.id);
+assert.equal((await send('/documents?page=1&view=invalid',null,'GET')).status,400);
+await db.prepare('UPDATE records SET data=? WHERE id=?').bind(JSON.stringify({status:'revoked',download_link:'https://drive.google.com/download/stale',view_link:'https://drive.google.com/file/d/stale/view'}),'drive:share:owner-one:'+merged.document.id).run();
+const revokedPage=await value(await send('/documents?page=1&view=shared',null,'GET'));assert.equal(revokedPage.documents[0].customer_share.status,'revoked');assert.equal(revokedPage.documents[0].customer_share.download_link,null);assert.equal(revokedPage.documents[0].customer_share.view_link,null);
+
+await db.prepare('DELETE FROM records WHERE id=?').bind('drive:share:owner-one:'+merged.document.id).run();
+const downloaded=await send('/documents/'+merged.document.id,null,'GET');assert.equal(downloaded.status,200);assert.equal((await PDFDocument.load(await downloaded.arrayBuffer())).getPageCount(),2);
+assert.match(downloaded.headers.get('Content-Disposition'),/^attachment/);
+const inlinePreview=await send('/documents/'+merged.document.id+'?preview=1',null,'GET');assert.equal(inlinePreview.status,200);assert.match(inlinePreview.headers.get('Content-Disposition'),/^inline/);assert.equal((await PDFDocument.load(await inlinePreview.arrayBuffer())).getPageCount(),2);
+assert.equal((await send('/documents/upload',form(new TextEncoder().encode('not a pdf')))).status,400);
+assert.equal((await send('/functions/downloadPdfs',{supplier_id:rule.id})).status,409);
+assert.equal((await send('/functions/mergePdfs',{supplier_id:rule.id})).status,409);
+assert.equal((await send('/functions/importDriveFiles',{supplier_id:rule.id})).status,409);
+assert.equal((await send('/functions/exportDriveDocument',{supplier_id:rule.id,document_id:'missing'})).status,404);
+assert.equal((await send('/functions/exportDriveDocument',{supplier_id:rule.id,document_id:first.document.id})).status,409);
+assert.equal((await send('/functions/shareDocument',{document_id:first.document.id,action:'create',confirmed:true})).status,409);
+assert.equal((await send('/functions/shareDocument',{document_id:first.document.id,action:'create',confirmed:false})).status,400);
+assert.equal((await send('/functions/shareDocument',{document_id:first.document.id,action:'status'},'POST',other)).status,404);
+assert.equal((await send('/functions/shareDocument',{document_id:first.document.id,action:'status'},'POST',{...headers,Origin:'https://evil.example'})).status,403);
+assert.equal((await value(await send('/functions/shareDocument',{document_id:first.document.id,action:'status'}))).share,null);
+
+assert.equal((await send('/functions/exportDriveDocument',{supplier_id:rule.id})).status,400);
+assert.equal((await send('/functions/exportDriveDocument',{supplier_id:rule.id,document_id:'missing'},'POST',{...headers,Origin:'https://evil.example'})).status,403);
+assert.equal((await send('/functions/mergePdfs',{supplier_id:rule.id},'POST',other)).status,404);
+assert.equal((await send('/functions/importDriveFiles',{supplier_id:rule.id},'POST',{...headers,Origin:'https://evil.example'})).status,403);
+assert.equal((await send('/functions/mergePdfs',{supplier_id:rule.id,ids:['same','same']})).status,400);
+assert.equal((await send('/functions/previewResults',{supplier_id:rule.id})).status,409);
+assert.equal((await send('/functions/previewResults',{supplier_id:rule.id},'POST',other)).status,404);
+assert.equal((await send('/functions/previewResults',{supplier_id:rule.id},'POST',{...headers,Origin:'https://evil.example'})).status,403);
+assert.equal((await send('/functions/previewResults',{email:'invalid'})).status,400);
+const history=await value(await send('/records/RunHistory',null,'GET'));assert.equal(history.length,4);assert.ok(history.every(r=>r.status==='completed'&&r.errors===0));assert.equal(history.filter(r=>r.duplicates_skipped===1).length,1);assert.equal(history.filter(r=>r.name_collision_saved===1).length,1);
+// A difficult PDF remains a source document even when processing fails.
+const difficult=new TextEncoder().encode('%PDF-1.7\n damaged source document');
+const stored=await value(await send('/documents/upload',form(difficult)));
+assert.equal(stored.document.processing_status,'needs_review');assert.equal(stored.document.pages,null);
+assert.deepEqual(new Uint8Array(await (await send('/documents/'+stored.document.id,null,'GET')).arrayBuffer()),difficult);
+const blocked=await send('/documents/merge',{ids:[first.document.id,stored.document.id]});assert.equal(blocked.status,422);assert.match((await blocked.json()).error,/original remains stored/);
+// Concurrent identical uploads have one durable document, not two.
+const concurrentBytes=await makePDF('Concurrent');
+const concurrent=await Promise.all([send('/documents/upload',form(concurrentBytes)),send('/documents/upload',form(concurrentBytes))]);
+const outcomes=await Promise.all(concurrent.map(value));assert.equal(outcomes.filter(r=>r.duplicate).length,1);assert.equal(outcomes[0].document.id,outcomes[1].document.id);
+const durable=await value(await send('/documents',null,'GET'));assert.equal(durable.length,5);
+assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM document_content').first()).n,4);
+await value(await send('/documents/'+first.document.id,null,'DELETE'));assert.equal((await send('/documents/'+first.document.id,null,'GET')).status,404);assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM document_content WHERE document_id=?').bind(first.document.id).first()).n,0);const reuploaded=await value(await send('/documents/upload',form(bytes)));assert.equal(reuploaded.duplicate,false);
+// Extraction preview is owner-scoped, versioned, separate from invoice approvals.
+const previewPath='/document-analysis/'+reuploaded.document.id;
+assert.equal((await send(previewPath+'?capture=1',null,'GET')).status,409);
+assert.equal((await send(previewPath,null,'GET',other)).status,404);
+const previewBody={revision:0,template:'generic',pages:[{page:1,text:'First',width:595,height:842,fragments:[{text:'First',x:20,y:20}]}]};
+assert.equal((await send(previewPath,{...previewBody,pages:[] })).status,400);
+assert.equal((await send(previewPath,{...previewBody,pages:[...previewBody.pages,{...previewBody.pages[0],page:2}]})).status,400);
+let preview=await value(await send(previewPath,{...previewBody,analysis:{status:'approved'}}));
+assert.equal(preview.result.analysis.status,'needs_review');assert.equal(preview.result.revision,1);
+assert.equal((await send(previewPath,previewBody)).status,409);
+const previewRace=await Promise.all([send(previewPath,{...previewBody,revision:1}),send(previewPath,{...previewBody,revision:1})]);assert.deepEqual(previewRace.map(r=>r.status).sort(),[200,409]);
+assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM document_analysis_versions WHERE document_id=?').bind(reuploaded.document.id).first()).n,2);
+assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM invoices').first()).n,0);
+assert.equal((await send('/documents/'+reuploaded.document.id,null,'DELETE')).status,409);
+const structuredPage={page:1,width:595,height:842,text:'ΤΙΜΟΛΟΓΙΟ\t123\t6/10/2026\nΚωδ.Πελάτη\t:\t8891\n01.02.003\tPrinted item\tkg\t2,00\t5,00\t0,00\t10,00\t24,00',fragments:[{text:'RECEIVER',x:160,y:113}]};
+await value(await send(previewPath,{revision:2,template:'tournas',pages:[structuredPage]}));
+const suggested=await value(await send(previewPath+'?capture=1',null,'GET'));assert.equal(suggested.draft.fields.receiver,'RECEIVER');assert.equal(suggested.draft.line_items[0].product_code,'01.02.003');assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM invoices').first()).n,0);assert.equal((await send(previewPath+'?capture=1',null,'GET',other)).status,404);
+// The second supplier follows the same durable preview route without invoice writes.
+const akronPreview=await value(await send(previewPath,{revision:3,template:'akron',pages:[akronFixture()]}));
+assert.equal(akronPreview.result.analysis.adapter_version,'akron-printed-discounts-2');
+const akronSuggestions=await value(await send(previewPath+'?capture=1',null,'GET'));
+assert.equal(akronSuggestions.draft.fields.invoice_number,'ΤΔΑΜ000001');
+assert.equal(akronSuggestions.draft.fields.supplier_name,null);
+assert.equal(akronSuggestions.draft.fields.receiver,'RECEIVER');
+assert.equal(akronSuggestions.draft.line_items[0].line_amount,'281,52');
+assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM invoices').first()).n,0);
+assert.equal((await send(previewPath+'?capture=1',null,'GET',other)).status,404);
+assert.equal((await send(previewPath,{revision:3,template:'akron',pages:[akronFixture()]})).status,409);
+console.log('PASS: extraction preview ownership, complete source pages, untrusted approval ignored, stale/concurrent save protection, immutable versions and preserved original source.');
+// Attachment storage is opaque: preserve the exact bytes without attempting analysis.
+for(const [filename,mime] of [
+ ['photo.PNG','image/png'],['contract.docx','application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+ ['quantities.xlsx','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+ ['presentation.pptx','application/vnd.openxmlformats-officedocument.presentationml.presentation'],['archive.zip','application/zip'],
+]){
+ const bytes=new TextEncoder().encode('binary storage fixture '+filename);
+ const f=new FormData();f.append('file',new File([bytes],filename,{type:'text/html'}));f.append('workflow',rule.id);
+ const attachment=await value(await send('/documents/upload',f));assert.equal(attachment.document.mime_type,mime);assert.equal(attachment.document.processing_status,'stored');
+ const downloaded=await send('/documents/'+attachment.document.id,null,'GET');assert.equal(downloaded.headers.get('content-type'),mime);assert.equal(downloaded.headers.get('x-content-type-options'),'nosniff');assert.match(downloaded.headers.get('content-disposition'),/^attachment;/);assert.deepEqual(new Uint8Array(await downloaded.arrayBuffer()),bytes);
+ assert.equal((await send('/documents/'+attachment.document.id,null,'GET',other)).status,404);
+ assert.equal((await send('/documents/merge',{ids:[attachment.document.id,second.document.id]})).status,400);
+ const duplicateForm=new FormData();duplicateForm.append('file',new File([bytes],filename));duplicateForm.append('workflow',rule.id);
+ assert.equal((await value(await send('/documents/upload',duplicateForm))).duplicate,true);
+ const different=new FormData();different.append('file',new File([new TextEncoder().encode('different '+filename)],filename));different.append('workflow',rule.id);
+ const changed=await value(await send('/documents/upload',different));assert.equal(changed.duplicate,false);assert.match(changed.document.name,/\[alt-/);assert.ok(changed.document.name.toLowerCase().endsWith('.'+filename.split('.').pop().toLowerCase()));
+}
+const unsafe=new FormData();unsafe.append('file',new File(['script'],'script.html'));assert.equal((await send('/documents/upload',unsafe)).status,400);
+const attachmentHistory=await value(await send('/records/RunHistory',null,'GET'));assert.ok(attachmentHistory.some(r=>r.operation==='File upload'&&r.files_saved===1&&r.pdfs_saved===0));
+// Pagination reaches records beyond the former 500-record boundary.
+const seedTime='2000-01-01T00:00:00.000Z';
+for(let start=0;start<505;start+=100){const statements=[];for(let i=start;i<Math.min(start+100,505);i++)statements.push(db.prepare('INSERT INTO records (id,owner,entity,data,created,updated) VALUES (?,?,?,?,?,?)').bind('seed-'+String(i).padStart(4,'0'),'owner-one','Document',JSON.stringify({name:'Pagination fixture '+i+'.pdf',workflow:'',file_type:'pdf',size:1}),seedTime,seedTime));await db.batch(statements);}
+const collected=[];let cursor;
+do{const page=await value(await send('/documents?page=1&limit=100&search=Pagination%20fixture'+(cursor?'&cursor='+encodeURIComponent(cursor):''),null,'GET'));assert.ok(page.documents.length<=100);assert.ok(page.documents.every(d=>!('key'in d)));collected.push(...page.documents.map(d=>d.id));cursor=page.next_cursor;}while(cursor);
+assert.equal(collected.length,505);assert.equal(new Set(collected).size,505);
+const lastMatch=await value(await send('/documents?page=1&search=Pagination%20fixture%200.pdf&workflow=',null,'GET'));assert.equal(lastMatch.documents.length,1);assert.equal(lastMatch.documents[0].id,'seed-0000');
+const workflowMatch=await value(await send('/documents?page=1&search=Pagination%20fixture&workflow='+rule.id,null,'GET'));assert.equal(workflowMatch.documents.length,0);
+const otherPage=await value(await send('/documents?page=1&search=Pagination%20fixture',null,'GET',other));assert.equal(otherPage.documents.length,0);
+const wrongType=await value(await send('/documents?page=1&search=Pagination%20fixture&type=excel',null,'GET'));assert.equal(wrongType.documents.length,0);
+assert.equal((await send('/documents?page=1&cursor=invalid',null,'GET')).status,400);
+assert.equal((await send('/documents?page=1&type=unknown',null,'GET')).status,400);
+const typePage=await value(await send('/documents?page=1&type=excel',null,'GET'));assert.ok(typePage.documents.length>0);assert.ok(typePage.documents.every(d=>d.file_type==='excel'));
+// Queueing is a separate stage: no supplier, amount, audit color, or approval is invented.
+const queues=await Promise.all([send('/invoices',{document_id:second.document.id,invoice_number:'FORGED',audit_flag:'GREEN'}),send('/invoices',{document_id:second.document.id})]);
+const queued=await Promise.all(queues.map(value));assert.equal(queued.filter(q=>q.already_queued).length,1);assert.equal(queued[0].invoice.id,queued[1].invoice.id);
+const invoiceId=queued[0].invoice.id;const invoiceDetail=await value(await send('/invoices/'+invoiceId,null,'GET'));
+assert.equal(invoiceDetail.invoice.analysis_status,'awaiting_analysis');assert.equal(invoiceDetail.invoice.audit_status,'not_started');
+for(const field of ['invoice_number','supplier_name','invoice_total','vat','audit_flag','audit_reasons','printed_names'])assert.equal(invoiceDetail.invoice[field],null);
+assert.equal(invoiceDetail.line_items.length,0);assert.equal('key'in invoiceDetail.source,false);
+assert.equal((await send('/invoices/'+invoiceId,null,'GET',other)).status,404);
+assert.equal((await send('/invoices',{document_id:second.document.id},'POST',other)).status,404);
+assert.equal((await send('/invoices',{document_id:second.document.id},'POST',{...headers,Origin:'https://evil.example'})).status,403);
+assert.equal((await send('/invoices',{document_id:typePage.documents[0].id})).status,400);
+assert.equal((await send('/documents/'+second.document.id,null,'DELETE')).status,409);
+assert.equal((await send('/documents/'+second.document.id,null,'GET')).status,200);
+const difficultQueue=await value(await send('/invoices',{document_id:stored.document.id}));assert.equal(difficultQueue.invoice.analysis_status,'awaiting_analysis');
+await value(await send('/invoices/'+difficultQueue.invoice.id,null,'DELETE'));assert.equal((await send('/documents/'+stored.document.id,null,'GET')).status,200);
+await db.batch([1,2].map(position=>db.prepare('INSERT INTO invoice_line_items (id,owner,invoice_id,position,description,quantity,unit,unit_price,line_amount) VALUES (?,?,?,?,?,?,?,?,?)').bind('line-'+position,'owner-one',invoiceId,position,'Printed material '+position,'2.50','kg','3.20','8.00')));
+const itemDetail=await value(await send('/invoices/'+invoiceId,null,'GET'));assert.equal(itemDetail.line_items.length,2);assert.equal(itemDetail.line_items[0].quantity,'2.50');assert.equal(itemDetail.line_items[1].description,'Printed material 2');
+assert.equal((await send('/invoices/'+invoiceId,null,'DELETE')).status,409);
+const invoiceList=await value(await send('/invoices',null,'GET'));assert.equal(invoiceList.invoices.length,1);assert.equal(invoiceList.invoices[0].source_name,second.document.name);
+assert.equal((await value(await send('/invoices',null,'GET',other))).invoices.length,0);
+// Manual capture saves an atomic revision with separate exact line values.
+const draft={revision:0,supplier_key:'tournas',supplier_name:'Exact printed supplier',invoice_number:'8891-TEST',invoice_total:'19.20',printed_names:['Exact printed customer'],receiver:'Printed receiver',receiver_status:'shown',document_type:'Invoice as printed',source_page:1,line_items:[{description:'Printed material',quantity:'2,50',unit:'kg',unit_price:'3.20',line_amount:'8.00',product_code:'P-01',discount_printed:'0',discount_basis:'%',vat_rate:'24',vat_amount:'1.92',gross_line_amount:'9.92',source_page:1,printed_evidence:'Original printed row',value_origin:'printed'}],audit_flag:'GREEN',audit_status:'approved'};
+const manual=await value(await send('/invoices/'+invoiceId,draft,'PATCH'));
+assert.equal(manual.invoice.capture_method,'manual');assert.equal(manual.invoice.analysis_status,'needs_review');assert.equal(manual.invoice.audit_status,'needs_review');assert.equal(manual.invoice.audit_flag,null);assert.equal(manual.invoice.revision,1);assert.equal(manual.invoice.account_information,null);
+const versionsPath='/invoices/'+invoiceId+'/versions';
+let versions=await value(await send(versionsPath,null,'GET'));assert.deepEqual(versions.versions.map(v=>v.revision),[1,0]);
+const firstSnapshot=(await value(await send(versionsPath+'?revision=1',null,'GET'))).version;assert.equal(firstSnapshot.action,'capture');assert.equal(firstSnapshot.data.invoice.receiver,'Printed receiver');assert.equal(firstSnapshot.data.line_items[0].product_code,'P-01');assert.equal(typeof firstSnapshot.data.line_items[0],'object');assert.equal('owner' in firstSnapshot.data.invoice,false);assert.equal('capture_token' in firstSnapshot.data.invoice,false);
+const baseline=(await value(await send(versionsPath+'?revision=0',null,'GET'))).version;assert.equal(baseline.action,'existing_state');assert.equal(baseline.data.line_items.length,2);
+assert.equal((await send(versionsPath,null,'GET',other)).status,404);assert.equal((await send(versionsPath+'?revision=1',null,'GET',other)).status,404);assert.equal((await send(versionsPath+'?revision=-1',null,'GET')).status,400);assert.equal((await send(versionsPath+'?revision=999',null,'GET')).status,404);assert.equal((await send(versionsPath,{},'POST')).status,405);
+const manuallyStored=await value(await send('/invoices/'+invoiceId,null,'GET'));assert.equal(manuallyStored.line_items.length,1);assert.equal(manuallyStored.line_items[0].quantity,'2,50');assert.equal(manuallyStored.line_items[0].unit_price,'3.20');assert.equal(manuallyStored.invoice.vat,null);assert.equal(manuallyStored.invoice.receiver,'Printed receiver');assert.equal(manuallyStored.line_items[0].product_code,'P-01');assert.equal(manuallyStored.line_items[0].vat_amount,'1.92');assert.equal(manuallyStored.line_items[0].printed_evidence,'Original printed row');assert.equal((await send('/invoices/'+invoiceId,{...draft,revision:1,source_page:500},'PATCH')).status,400);const extendedCsv=await send('/reports?status=all&format=csv',null,'GET');assert.match(await extendedCsv.text(),/Printed receiver/);
+assert.equal((await send('/invoices/'+invoiceId,{...draft,revision:1,invoice_total:'guessed'},'PATCH')).status,400);
+assert.equal((await value(await send('/invoices/'+invoiceId,null,'GET'))).line_items[0].quantity,'2,50');
+assert.equal((await send('/invoices/'+invoiceId,draft,'PATCH')).status,409);assert.equal((await value(await send(versionsPath,null,'GET'))).versions.length,2);
+const competing=await Promise.all([send('/invoices/'+invoiceId,{...draft,revision:1,invoice_number:'Winner A',line_items:[{description:'Line A',quantity:'1'}]},'PATCH'),send('/invoices/'+invoiceId,{...draft,revision:1,invoice_number:'Winner B',line_items:[{description:'Line B',quantity:'2'}]},'PATCH')]);
+assert.deepEqual(competing.map(r=>r.status).sort(),[200,409]);
+const afterRace=await value(await send('/invoices/'+invoiceId,null,'GET'));assert.equal(afterRace.invoice.revision,2);assert.equal(afterRace.line_items.length,1);assert.equal(afterRace.line_items[0].description,afterRace.invoice.invoice_number==='Winner A'?'Line A':'Line B');
+assert.equal((await send('/invoices/'+invoiceId,{...draft,revision:2},'PATCH',other)).status,404);
+versions=await value(await send(versionsPath,null,'GET'));assert.deepEqual(versions.versions.map(v=>v.revision),[2,1,0]);assert.deepEqual((await value(await send(versionsPath+'?revision=1',null,'GET'))).version,firstSnapshot);const winner=(await value(await send(versionsPath+'?revision=2',null,'GET'))).version;assert.equal(winner.data.invoice.invoice_number,afterRace.invoice.invoice_number);assert.equal(winner.data.line_items[0].description,afterRace.line_items[0].description);
+// Complete manual audit/review/report path, with duplicate identity protection.
+const createCaptured=async(number,extra={})=>{
+ const upload=await value(await send('/documents/upload',form(await makePDF('Audit source '+crypto.randomUUID()))));
+ const queue=await value(await send('/invoices',{document_id:upload.document.id}));
+ const body={revision:0,supplier_key:'tournas',supplier_name:'Printed Tournas',account_information:'8891',receiver_status:'blank',document_type:'Materials invoice',invoice_number:number,invoice_date:'2026-10-06',currency:'EUR',subtotal:'100',vat:'24',invoice_total:'124',printed_names:['Exact owner'],line_items:[{description:'Printed sand',quantity:'2',unit:'kg',unit_price:'50',line_amount:'100'}],...extra};
+ const captured=await value(await send('/invoices/'+queue.invoice.id,body,'PATCH'));return {invoice:captured.invoice,source:upload.document,body};
+};
+const action=async(invoice,command,extra={})=>send('/invoices/'+invoice.id+'/'+command,{revision:invoice.revision,...extra});
+let clean=(await createCaptured('AUDIT-001')).invoice;
+assert.equal((await action(clean,'review',{confirmed:true})).status,409);
+clean=(await value(await action(clean,'audit'))).invoice;assert.equal(clean.audit_flag,'GREEN');
+assert.equal((await action(clean,'review',{confirmed:false})).status,400);
+clean=(await value(await action(clean,'review',{confirmed:true}))).invoice;assert.equal(clean.audit_status,'reviewed');
+const approvals=await Promise.all([action(clean,'approve'),action(clean,'approve')]);assert.deepEqual(approvals.map(r=>r.status).sort(),[200,409]);
+clean=(await value(await send('/invoices/'+clean.id,null,'GET'))).invoice;assert.equal(clean.audit_status,'approved');
+assert.equal((await send('/invoices/'+clean.id,{...draft,revision:clean.revision},'PATCH')).status,409);
+let copy=(await createCaptured(' audit-001 ')).invoice;
+copy=(await value(await action(copy,'audit'))).invoice;assert.equal(copy.audit_flag,'ORANGE');assert.equal(copy.duplicate_of,clean.id);
+assert.equal((await action(copy,'review',{confirmed:true,note:'Source checked'})).status,409);
+assert.equal((await action(copy,'exclude',{duplicate_of:clean.id,note:'Same printed invoice retained once.'})).status,200);
+assert.equal((await send('/documents/'+copy.source_document_id,null,'DELETE')).status,409);
+let canonicalData=await createCaptured('AUDIT-002',{invoice_date:'2026-10-07',subtotal:'102',vat:'24.48',invoice_total:'126.48',line_items:[{description:'Printed sand',quantity:'2',unit:'kg',unit_price:'51',line_amount:'102'}]}),canonical=canonicalData.invoice;
+let twin=(await createCaptured('AUDIT-002')).invoice;
+canonical=(await value(await action(canonical,'audit'))).invoice;assert.equal(canonical.audit_flag,'ORANGE');
+await value(await action(twin,'exclude',{duplicate_of:canonical.id,note:'Second file copy, retain first.'}));
+assert.equal((await send('/invoices/'+canonical.id,{...canonicalData.body,revision:canonical.revision,invoice_number:'CHANGED'},'PATCH')).status,409);
+assert.equal((await action(canonical,'review',{confirmed:true,note:'checked'})).status,409); // stale after exclusion
+canonical=(await value(await action(canonical,'audit'))).invoice;assert.equal(canonical.audit_flag,'YELLOW');assert.ok(JSON.parse(canonical.audit_reasons).some(r=>r.code==='price_change'));
+assert.equal((await action(canonical,'review',{confirmed:true})).status,400);
+canonical=(await value(await action(canonical,'review',{confirmed:true,note:'Planned additional delivery; checked PDF.'}))).invoice;
+// Another draft capture invalidates review approval until audit is refreshed.
+await createCaptured('AUDIT-003',{line_items:[{description:'=HYPERLINK("example")',quantity:'1',unit:'unit'}]});
+assert.equal((await action(canonical,'approve')).status,409);
+canonical=(await value(await action(canonical,'audit'))).invoice;
+canonical=(await value(await action(canonical,'review',{confirmed:true,note:'Planned additional delivery; checked PDF.'}))).invoice;
+canonical=(await value(await action(canonical,'approve'))).invoice;assert.equal(canonical.audit_status,'approved');
+const supplierSummary=await value(await send('/invoice-suppliers',null,'GET'));assert.ok(supplierSummary.suppliers.some(row=>row.supplier_name==='Printed Tournas'&&row.approved_count===2));assert.equal((await value(await send('/invoice-suppliers',null,'GET',other))).suppliers.length,0);
+const report=await value(await send('/reports',null,'GET'));assert.equal(report.invoice_count,2);assert.equal(report.rows.length,2);assert.equal(report.summary[0].quantity,'4');assert.ok(report.rows.every(row=>row.audit_status==='approved'));
+assert.equal((await value(await send('/reports',null,'GET',other))).rows.length,0);
+assert.equal((await send('/invoices/'+canonical.id+'/audit',{revision:canonical.revision},'POST',other)).status,404);
+assert.equal((await send('/invoices/'+canonical.id+'/audit',{revision:canonical.revision},'POST',{...headers,Origin:'https://evil.example'})).status,403);
+const filtered=await value(await send('/reports?supplier=tournas&number=AUDIT-002&flag=YELLOW&from=2026-10-07&to=2026-10-07',null,'GET'));assert.equal(filtered.invoice_count,1);
+assert.equal((await send('/reports?from=2026-02-30',null,'GET')).status,400);
+const csv=await send('/reports?format=csv&status=all',null,'GET');assert.equal(csv.status,200);assert.match(csv.headers.get('content-type'),/text\/csv/);assert.ok((await csv.text()).includes("'=HYPERLINK"));
+const searchApproved=await value(await send('/invoices?status=approved&search=Printed%20sand',null,'GET'));assert.equal(searchApproved.invoices.length,2);
+const reviewDetail=await value(await send('/invoices/'+canonical.id,null,'GET'));assert.ok(reviewDetail.events.some(event=>event.action==='approve'));assert.ok(reviewDetail.events.some(event=>event.action==='review'));
+const approvedVersions=await value(await send('/invoices/'+canonical.id+'/versions',null,'GET'));assert.ok(approvedVersions.versions.some(v=>v.action==='approve'));assert.ok(approvedVersions.versions.some(v=>v.action==='review'));const approvedVersion=approvedVersions.versions.find(v=>v.action==='approve');const approvedSnapshot=(await value(await send('/invoices/'+canonical.id+'/versions?revision='+approvedVersion.revision,null,'GET'))).version;assert.equal(approvedSnapshot.data.invoice.audit_status,'approved');assert.equal(approvedSnapshot.data.line_items.length,1);const versionCount=approvedVersions.versions.length;assert.equal((await send('/invoices/'+canonical.id,{...draft,revision:reviewDetail.invoice.revision},'PATCH')).status,409);assert.equal((await value(await send('/invoices/'+canonical.id+'/versions',null,'GET'))).versions.length,versionCount);
+assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM invoices WHERE owner=? AND identity_key=? AND audit_status='approved'").bind('owner-one',clean.identity_key).first()).n,1);
+console.log('PASS: audit identity matching, explicit duplicate exclusion/source preservation, required human review, non-green explanations, approved immutable records, stale history invalidation, concurrent approval protection, exact quantity report/filter isolation, CSV injection prevention, searchable line items and review events.');
+// Finding review routes use the existing owner/origin guard and leave financial records intact.
+assert.equal((await send('/findings',null,'GET',{})).status,401);
+assert.equal((await send('/findings/not-a-finding',{status:'resolved',revision:0,note:'Test'},'POST',{...headers,Origin:'https://evil.example'})).status,403);
+const savedConcern={color:'ORANGE',code:'line_calculation',reason:'Synthetic Worker concern',evidence:[{position:1,quantity:'1',unit_price:'10',line_amount:'15'}]};
+await db.prepare("UPDATE invoices SET audit_reasons=?,audit_flag='ORANGE' WHERE id=?").bind(JSON.stringify([savedConcern]),afterRace.invoice.id).run();
+const attention=(await value(await send('/findings',null,'GET')));const concern=attention.findings.find(f=>f.invoice_id===afterRace.invoice.id&&f.kind==='invoice');assert.ok(concern);assert.ok(attention.findings.every(f=>['ORANGE','RED'].includes(f.color)&&f.unresolved));
+const financialBefore=(await db.prepare('SELECT * FROM invoices ORDER BY id').all()).results;
+assert.equal((await send('/findings/'+concern.id,null,'GET',other)).status,404);
+assert.equal((await send('/findings/'+concern.id,{status:'resolved',revision:0,note:'Test'},'POST',other)).status,409);
+// Findings workspace/export are read-only and use the current assessment loader.
+assert.equal((await send('/findings-workspace',null,'GET',{})).status,401);
+assert.equal((await send('/findings-export?format=xlsx',null,'GET',{})).status,401);
+const workspaceBefore={invoices:(await db.prepare('SELECT * FROM invoices ORDER BY id').all()).results,lines:(await db.prepare('SELECT * FROM invoice_line_items ORDER BY id').all()).results,records:(await db.prepare('SELECT * FROM records ORDER BY id').all()).results};
+const workspace=await value(await send('/findings-workspace?priority=1',null,'GET'));
+assert.equal(workspace.matching.findings,attention.findings.length);
+assert.equal(workspace.matching.invoices,new Set(attention.findings.map(f=>f.invoice_id)).size);
+const excel=await send('/findings-export?priority=1&format=xlsx&snapshot='+workspace.snapshot,null,'GET');assert.equal(excel.status,200);assert.match(excel.headers.get('Content-Type'),/spreadsheetml/);assert.equal(new DataView(await excel.arrayBuffer()).getUint32(0,true),0x04034b50);
+const printable=await send('/findings-export?priority=1&format=print&snapshot='+workspace.snapshot,null,'GET');assert.equal(printable.status,200);assert.match(await printable.text(),/FlowStack/);
+assert.equal((await send('/findings-export?format=xlsx&snapshot=stale',null,'GET')).status,409);
+assert.deepEqual((await db.prepare('SELECT * FROM invoices ORDER BY id').all()).results,workspaceBefore.invoices);assert.deepEqual((await db.prepare('SELECT * FROM invoice_line_items ORDER BY id').all()).results,workspaceBefore.lines);assert.deepEqual((await db.prepare('SELECT * FROM records ORDER BY id').all()).results,workspaceBefore.records);
+console.log('PASS: findings workspace and Excel/PDF-ready exports authenticated, snapshot-consistent, read-only; distinct invoice counts verified.');
+const technical=await value(await send('/findings-export?type=technical&format=json',null,'GET'));
+for(const format of ['pdf','xlsx','print']){const response=await send('/findings-export?type=technical&format='+format+'&snapshot='+technical.snapshot,null,'GET');assert.equal(response.status,200,await response.clone().text());if(format==='pdf'){assert.match(response.headers.get('Content-Type'),/application\/pdf/);assert.equal(new TextDecoder().decode((await response.arrayBuffer()).slice(0,4)),'%PDF');}else assert.ok((await response.arrayBuffer()).byteLength>1000);}
+assert.equal((await send('/findings-export?type=technical&format=pdf&snapshot=stale',null,'GET')).status,409);
+assert.equal((await send('/findings-export?type=technical&format=pdf',null,'GET',{})).status,401);
+assert.deepEqual((await db.prepare('SELECT * FROM invoices ORDER BY id').all()).results,workspaceBefore.invoices);
+assert.deepEqual((await db.prepare('SELECT * FROM invoice_line_items ORDER BY id').all()).results,workspaceBefore.lines);
+assert.deepEqual((await db.prepare('SELECT * FROM records ORDER BY id').all()).results,workspaceBefore.records);
+console.log('PASS: compiled Worker direct Greek PDF, genuine XLSX, report snapshot guards and read-only integrity.');
+
+await value(await send('/findings/'+concern.id,{status:'needs_explanation',revision:0,note:'Fixture source needs explanation'}));
+await value(await send('/findings/'+concern.id,{status:'resolved',revision:1,note:'Fixture explanation verified'}));
+assert.ok(!(await value(await send('/findings',null,'GET'))).findings.some(f=>f.id===concern.id));
+const concernHistory=await value(await send('/findings/'+concern.id,null,'GET'));assert.equal(concernHistory.events.length,2);assert.equal(concernHistory.finding.review.status,'resolved');
+assert.deepEqual((await db.prepare('SELECT * FROM invoices ORDER BY id').all()).results,financialBefore);
+console.log('PASS: authenticated/origin/owner-scoped priority findings, explicit review closure/history, original financial rows preserved.');
+for(const path of ['/','/documents','/rules/new','/invoices','/audit','/audit/reports','/audit/findings/'+attention.findings[0].id,'/reports','/suppliers','/google-setup-later','/shared-packages','/invoices/'+invoiceId]){const r=await mf.dispatchFetch('https://test.local'+path,{headers,redirect:'manual'});assert.equal(r.status,200,await r.clone().text());assert.match(await r.text(),/Flowstack/);}
+console.log('PASS: manual capture validation, exact line-item persistence, null preservation, approval rejection, atomic stale/concurrent edit protection; concurrent invoice queueing, unknown-value preservation, owner isolation, source-PDF protection, removable empty queue entries, separate ordered line items; 505-record pagination, older-file search, folder/type filtering, cursor validation, account isolation; attachment storage/headers, exact-byte downloads, attachment dedupe/collisions, PDF-only merges, unsupported-file rejection; difficult PDF preservation, explicit merge rejection, concurrent duplicate safety, claim cleanup, history counters, partial workflow editing; workflow CRUD, origin checks, anonymous denial, user isolation, upload persistence, duplicate content, same-name different content, two-page merge/download, invalid PDF rejection, history and SSR routes. Gmail/Drive unavailable response verified.');
+}finally{await mf.dispose();}

@@ -1,0 +1,27 @@
+"use client";
+import Reconciliation from '@/screens/Reconciliation';
+import Purchases from '@/screens/Purchases';
+import SharedPackages from '@/screens/SharedPackages';
+import {useEffect,useState} from 'react';
+import {BrowserRouter,Routes,Route} from 'react-router-dom';
+import {QueryClientProvider} from '@tanstack/react-query';
+import {queryClientInstance} from '@/lib/query-client';
+import {Toaster} from '@/components/ui/toaster';
+import Layout from '@/components/Layout';
+import Welcome from '@/screens/Welcome';
+import Rules from '@/screens/Rules';
+import CreateRuleWizard from '@/screens/CreateRuleWizard';
+import RunHistory from '@/screens/RunHistory';
+import Settings from '@/screens/Settings';
+import DocumentAnalysis from '@/screens/DocumentAnalysis';
+import Documents from '@/screens/Documents';
+import Analysis from '@/screens/Analysis';
+import Invoices from '@/screens/Invoices';
+import FindingsWorkspace from '@/components/FindingsWorkspace';
+import InvoiceSuppliers from '@/screens/InvoiceSuppliers';
+import Reports from '@/screens/Reports';
+import GoogleSetupLater from '@/screens/GoogleSetupLater';
+import FindingDetails from '@/screens/FindingDetails';
+import AuditReports from '@/screens/AuditReports';
+import InvoiceCapture from '@/screens/InvoiceCapture';
+export default function FlowClient(){const [ready,setReady]=useState(false);useEffect(()=>setReady(true),[]);if(!ready)return <p className="p-8">Loading Flowstack…</p>;return <QueryClientProvider client={queryClientInstance}><BrowserRouter><Routes><Route element={<Layout/>}><Route path="/" element={<Welcome/>}/><Route path="/rules" element={<Rules/>}/><Route path="/rules/new" element={<CreateRuleWizard/>}/><Route path="/rules/:id/edit" element={<CreateRuleWizard/>}/><Route path="/run-history" element={<RunHistory/>}/><Route path="/settings" element={<Settings/>}/><Route path="/shared-packages" element={<SharedPackages/>}/><Route path="/documents" element={<Documents/>}/><Route path="/attention" element={<Analysis initialStage="attention"/>}/><Route path="/analysis" element={<Analysis/>}/><Route path="/documents/:id/analyze" element={<DocumentAnalysis/>}/><Route path="/invoices" element={<Invoices key="all"/>}/><Route path="/suppliers" element={<InvoiceSuppliers/>}/><Route path="/reconciliation" element={<Reconciliation/>}/><Route path="/purchases" element={<Purchases/>}/><Route path="/reports" element={<Reports/>}/><Route path="/audit/findings/:id" element={<FindingDetails/>}/><Route path="/audit/reports" element={<AuditReports/>}/><Route path="/audit" element={<FindingsWorkspace/>}/><Route path="/audit/invoices" element={<Invoices key="audit" auditOnly/>}/><Route path="/google-setup-later" element={<GoogleSetupLater/>}/><Route path="/invoices/:id" element={<InvoiceCapture/>}/><Route path="*" element={<div className="p-8">Page not found. <a href="/">Home</a></div>}/></Route></Routes><Toaster/></BrowserRouter></QueryClientProvider>;}
