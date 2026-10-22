@@ -121,7 +121,9 @@ test('workspace run status scopes saved issues, totals and findings to the selec
  for(const [id,doc,supplier,total] of [['akron-invoice','akron-doc','Akron','10.00'],['tournas-invoice','tournas-doc','Tournas','99.00']]){
   await db.prepare('INSERT INTO invoices(id,owner,source_document_id,supplier_key,supplier_name,invoice_number,capture_method,audit_reasons,audit_status,analysis_status,created,updated,currency,invoice_total,audit_flag,invoice_date) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(id,'jim',doc,supplier.toLowerCase(),supplier,'1','extraction',JSON.stringify([{color:'ORANGE',reason:`${supplier} finding`}]),'needs_review','analyzed','2026-10-10','2026-10-10','EUR',total,'ORANGE','2026-10-10').run();
  }
- await put('akron-run','AutomationRun',{supplier_id:'akron',status:'completed',document_ids:['akron-doc']});
+ await put('akron-outcome','CollectionOutcome',{job_id:'akron-job',pdfs_saved:1,document_id:'akron-doc'});
+ await put('older-outcome','CollectionOutcome',{job_id:'older-job',pdfs_saved:1,document_id:'tournas-doc'});
+ await put('akron-run','AutomationRun',{supplier_id:'akron',status:'completed',collection_job_ids:['akron-job'],document_ids:['akron-doc']});
  const scoped=await automationStatus({owner:'jim',db,supplierId:'akron'});
  assert.equal(scoped.failed_jobs,1);assert.equal(scoped.failed_sheets,1);assert.deepEqual(scoped.total_invoiced_by_currency,[{currency:'EUR',amount:'10',invoice_count:1,invalid_totals:0}]);
  assert.equal(scoped.outstanding_reviews,1);assert.deepEqual(scoped.priority_findings.map(item=>item.supplier),['Akron']);assert.equal(scoped.scope_supplier_id,'akron');assert.equal(scoped.last_selected_workspace_run.finding_details[0].invoice_id,'akron-invoice');assert.equal(scoped.last_selected_workspace_run.finding_details[0].source_document_id,'akron-doc');assert.deepEqual(scoped.last_selected_workspace_run.pdf_details,[{document_id:'akron-doc',name:'akron-original.pdf',workflow:'akron',pages:null}]);
