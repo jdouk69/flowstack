@@ -101,6 +101,32 @@ test('client follows durable IDs and stops with honest feedback on busy, failure
  await assert.rejects(advanceManualAudit({send:async()=>{throw Error('Connection interrupted');},onProgress:()=>{}}),/interrupted/);
  const controller=new AbortController();controller.abort();await assert.rejects(advanceManualAudit({signal:controller.signal,send:async()=>assert.fail('must not send after unmount'),onProgress:()=>{}}),/paused/);
 });
+test('selected workspace ID stays attached to the audit start and every resumed step',async()=>{
+ const bodies=[];let step=0;
+ const result=await advanceManualAudit({supplierId:'akron',send:async body=>{bodies.push(body);return step++?{id:'vendor-run',status:'completed',needs_continue:false}:{id:'vendor-run',status:'running',needs_continue:true};},onProgress:()=>{}});
+ assert.equal(result.status,'completed');assert.deepEqual(bodies,[{supplier_id:'akron'},{run_id:'vendor-run',supplier_id:'akron'}]);
+});
+test('automation status returns only the requested workspace run for its scoped resume state',async t=>{
+ const {db,put}=await setup(t);
+ await put('all-run','AutomationRun',{status:'completed',supplier_id:null});
+ await put('akron-run','AutomationRun',{status:'needs_retry',supplier_id:'akron'});
+ await put('tournas-run','AutomationRun',{status:'running',supplier_id:'tournas'});
+ const status=await automationStatus({owner:'jim',db,supplierId:'akron'});
+ assert.equal(status.last_selected_workspace_run.id,'akron-run');assert.equal(status.last_selected_workspace_run.supplier_id,'akron');
+});
+test('workspace run status scopes saved issues, totals and findings to the selected supplier',async t=>{
+ const {db,put}=await setup(t);
+ await put('akron-doc','Document',{name:'akron-original.pdf',file_type:'pdf',workflow:'akron',source_kind:'gmail',automation_review_reason:'Akron import failed',automation_sheet_sync_status:'failed'});
+ await put('tournas-doc','Document',{name:'tournas-original.pdf',file_type:'pdf',workflow:'tournas',source_kind:'gmail',automation_review_reason:'Tournas import failed',automation_sheet_sync_status:'failed'});
+ for(const [id,doc,supplier,total] of [['akron-invoice','akron-doc','Akron','10.00'],['tournas-invoice','tournas-doc','Tournas','99.00']]){
+  await db.prepare('INSERT INTO invoices(id,owner,source_document_id,supplier_key,supplier_name,invoice_number,capture_method,audit_reasons,audit_status,analysis_status,created,updated,currency,invoice_total,audit_flag,invoice_date) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(id,'jim',doc,supplier.toLowerCase(),supplier,'1','extraction',JSON.stringify([{color:'ORANGE',reason:`${supplier} finding`}]),'needs_review','analyzed','2026-10-10','2026-10-10','EUR',total,'ORANGE','2026-10-10').run();
+ }
+ await put('akron-run','AutomationRun',{supplier_id:'akron',status:'completed',document_ids:['akron-doc']});
+ const scoped=await automationStatus({owner:'jim',db,supplierId:'akron'});
+ assert.equal(scoped.failed_jobs,1);assert.equal(scoped.failed_sheets,1);assert.deepEqual(scoped.total_invoiced_by_currency,[{currency:'EUR',amount:'10',invoice_count:1,invalid_totals:0}]);
+ assert.equal(scoped.outstanding_reviews,1);assert.deepEqual(scoped.priority_findings.map(item=>item.supplier),['Akron']);assert.equal(scoped.scope_supplier_id,'akron');assert.equal(scoped.last_selected_workspace_run.finding_details[0].invoice_id,'akron-invoice');assert.equal(scoped.last_selected_workspace_run.finding_details[0].source_document_id,'akron-doc');assert.deepEqual(scoped.last_selected_workspace_run.pdf_details,[{document_id:'akron-doc',name:'akron-original.pdf',workflow:'akron',pages:null}]);
+ const overall=await automationStatus({owner:'jim',db});assert.equal(overall.failed_jobs,2);assert.equal(overall.failed_sheets,2);assert.deepEqual(overall.total_invoiced_by_currency,[{currency:'EUR',amount:'109',invoice_count:2,invalid_totals:0}]);
+});
 test('manual and unattended completion timestamps stay separate and failed attempts cannot claim success',async t=>{
  const {db,put}=await setup(t);
  await put('manual-success','AutomationRun',{reason:'manual',status:'completed',started:'2026-10-09T00:00:00Z',completed:'2026-10-09T00:01:00Z',last_successful_run:'2026-10-09T00:01:00Z'},'jim','2026-10-09T00:00:00Z');
