@@ -7,8 +7,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import Skeleton from '@/components/Skeleton';
 import EmptyState from '@/components/EmptyState';
 import DownloadFlow from '@/components/DownloadFlow';
-import AutomationDashboard from '@/components/AutomationDashboard';
-import { Download, FileText, History, ArrowRight, Clock, Plus } from 'lucide-react';
+import { Download, FileText, History, ArrowRight, Clock, Plus, FileStack } from 'lucide-react';
 
 function getGreeting() {
   const hour = new Date().getHours();
@@ -57,7 +56,7 @@ export default function Welcome() {
         </p>
       </div>
 
-      <AutomationDashboard/>
+      <Card className="mb-5 border-primary/20"><CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="font-semibold">Run invoice check</h2><p className="mt-1 text-sm text-muted-foreground">Choose one supplier workspace to check. Each run stays within that workspace.</p></div><div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row"><Button size="lg" className="min-h-12 w-full gap-2 bg-blue-700 text-base font-bold text-white shadow-md hover:bg-blue-800 sm:w-auto" onClick={()=>navigate('/run-check')}><Download className="h-5 w-5"/>Run invoice check now</Button><Button size="lg" variant="outline" className="min-h-12 w-full gap-2 sm:w-auto" onClick={()=>navigate('/documents')}><FileStack className="h-5 w-5"/>Combine PDFs</Button></div></CardContent></Card>
       <FindingsOverview/>
 
       <details className="audit-collection-tools"><summary>Collection tools and recent activity</summary>
