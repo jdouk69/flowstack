@@ -52,3 +52,7 @@ test('refresh errors expose only allow-listed Google failure guidance',()=>{
  assert.match(googleRefreshMessage('unknown-provider-value'),/Reconnect Google in Settings/);
  assert.ok(!googleRefreshMessage('unknown-provider-value').includes('unknown-provider-value'));
 });
+test('Google connection test gives safe guidance when the saved refresh grant is rejected',async()=>{
+ const f=fixture();await f.send('configure',config);f.rows.set('google:tokens:one',{owner:'one',data:await seal({access_token:'expired',refresh_token:'refresh',email:'jimdoukakis@gmail.com',expires:0},key,'one:tokens')});
+ const response=await f.send('test',{},'one','POST',async()=>Response.json({error:'invalid_client',error_description:'private fixture-secret'},{status:401}));assert.equal(response.status,502);const result=await response.json();assert.match(result.error,/client credentials/);assert.ok(!result.error.includes('private fixture-secret'));
+});
