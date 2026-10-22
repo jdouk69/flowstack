@@ -2,6 +2,7 @@ import { useResultReveal } from '@/hooks/useResultReveal';
 import { useEffect, useRef, useState } from 'react';
 import { request } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
+import { Link } from 'react-router-dom';
 
 const authorizationMessages = {
   cancelled: 'Google authorization was cancelled.',
@@ -75,11 +76,8 @@ export default function GoogleConnection() {
         window.location.assign(result.url);
         return;
       } else {
-        if (action === 'test' && result.ok !== true) {
-          throw new Error(result.error || 'The Google connection test did not complete successfully.');
-        }
         setMessage(result.message || 'Done.');
-        setMessageTone(action === 'test' ? 'success' : 'info');
+        setMessageTone('info');
       }
       await refresh();
     } catch (e) {
@@ -117,7 +115,7 @@ export default function GoogleConnection() {
         Connect your personal Google account: <strong>jimdoukakis@gmail.com</strong>. ChatGPT sign-in continues to protect this app.
       </p>
       <p className="text-sm text-muted-foreground">
-        Permissions: read Gmail and Drive, save original attachments to supplier folders, and update the configured audit spreadsheet. The connection test checks Gmail, Drive, and the Tournas master sheet without changing them.
+                Permissions: read Gmail and Drive, save original attachments to supplier folders, and update the configured audit spreadsheet.
       </p>
       {!status?.connected && feedbackContent}
       {!status && !error && <p>Checking connection…</p>}
@@ -165,9 +163,7 @@ export default function GoogleConnection() {
                 {status.spreadsheet_authorized ? 'Reconnect Google' : 'Authorize spreadsheet access'}
               </Button>
               <div className="min-w-0 max-w-full space-y-2">
-                <Button disabled={busy} variant="outline" onClick={() => act('test')}>
-                  Test Gmail, Drive &amp; Sheets
-                </Button>
+                <Button asChild variant="outline"><Link to="/connection-checks">Open Connection Checks</Link></Button>
                 {feedbackContent}
               </div>
               <Button disabled={busy} variant="outline" onClick={() => act('disconnect')}>

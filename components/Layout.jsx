@@ -20,7 +20,7 @@ const advancedItems = [
   { path: '/audit', label: 'Audit Findings', icon: FileText },
   { path: '/purchases', label: 'Purchase history', icon: FileText },
   { path: '/reconciliation', label: 'Reconciliation', icon: FileText },
-  { path: '/documents', label: 'Documents', icon: FileText },
+  { path: '/documents', label: 'Combine PDFs', icon: FileText },
   { path: '/shared-packages', label: 'Shared packages', icon: FileText },
   { path: '/run-history', label: 'History', icon: History },
   { path: '/settings', label: 'Settings', icon: SettingsIcon },
